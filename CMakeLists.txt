@@ -11,6 +11,7 @@ qt6_standard_project_setup()
 set(SOURCES
     src/main.cpp
     src/ui/MainWindow.cpp
+    src/ui/FFmpegSetupDialog.cpp
     src/core/FileProcessor.cpp
     src/core/MuxingTask.cpp
     src/core/MediaAnalyzer.cpp
@@ -18,6 +19,7 @@ set(SOURCES
 
 set(HEADERS
     src/ui/MainWindow.h
+    src/ui/FFmpegSetupDialog.h
     src/core/FileProcessor.h
     src/core/MuxingTask.h
     src/core/MediaAnalyzer.h

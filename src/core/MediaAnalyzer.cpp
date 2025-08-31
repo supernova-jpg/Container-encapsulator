@@ -185,6 +185,56 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                         }
                     }
                 }
+                
+                // Parse bit depth
+                if (stream.contains("bits_per_raw_sample")) {
+                    int bitDepth = stream["bits_per_raw_sample"].toInt();
+                    info.bitDepth = QString::number(bitDepth) + " bit";
+                } else if (stream.contains("pix_fmt")) {
+                    QString pixFmt = stream["pix_fmt"].toString();
+                    // Common pixel format to bit depth mapping
+                    if (pixFmt.contains("yuv420p10") || pixFmt.contains("p010")) {
+                        info.bitDepth = "10 bit";
+                    } else if (pixFmt.contains("yuv420p12")) {
+                        info.bitDepth = "12 bit";
+                    } else if (pixFmt.contains("yuv420p16")) {
+                        info.bitDepth = "16 bit";
+                    } else if (pixFmt.contains("yuv420p")) {
+                        info.bitDepth = "8 bit";
+                    } else {
+                        info.bitDepth = "Unknown";
+                    }
+                }
+                
+                // Parse color space
+                if (stream.contains("color_space")) {
+                    QString colorSpace = stream["color_space"].toString();
+                    if (colorSpace == "bt709") {
+                        info.colorSpace = "Rec. 709";
+                    } else if (colorSpace == "bt2020nc" || colorSpace == "bt2020c") {
+                        info.colorSpace = "Rec. 2020";
+                    } else if (colorSpace == "smpte170m") {
+                        info.colorSpace = "SMPTE 170M";
+                    } else if (colorSpace == "bt470bg") {
+                        info.colorSpace = "PAL";
+                    } else if (!colorSpace.isEmpty()) {
+                        info.colorSpace = colorSpace.toUpper();
+                    } else {
+                        info.colorSpace = "Unknown";
+                    }
+                } else {
+                    // Try to infer from resolution for common cases
+                    if (stream.contains("width")) {
+                        int width = stream["width"].toInt();
+                        if (width >= 1920) {
+                            info.colorSpace = "Rec. 709"; // HD/UHD default
+                        } else {
+                            info.colorSpace = "Rec. 601"; // SD default
+                        }
+                    } else {
+                        info.colorSpace = "Unknown";
+                    }
+                }
             }
             else if (codecType == "audio" && info.audioCodec.isEmpty()) {
                 info.audioCodec = stream["codec_name"].toString().toUpper();
@@ -294,13 +344,19 @@ MediaInfo MediaAnalyzer::createDefaultMediaInfo(const QString &filePath)
     info.resolution = "Unknown";
     info.frameRate = "Unknown";
     info.audioCodec = "None";
+    info.bitDepth = "Unknown";
+    info.colorSpace = "Unknown";
     
     // Try to guess codec from extension
     QString extension = fileInfo.suffix().toLower();
     if (extension == "h264" || extension == "264") {
         info.videoCodec = "H.264";
+        info.bitDepth = "8 bit"; // H.264 is commonly 8-bit
+        info.colorSpace = "Rec. 709"; // Common default
     } else if (extension == "h265" || extension == "hevc" || extension == "265") {
         info.videoCodec = "H.265";
+        info.bitDepth = "10 bit"; // H.265 often uses 10-bit
+        info.colorSpace = "Rec. 709"; // Common default
     } else {
         info.videoCodec = "Unknown";
     }

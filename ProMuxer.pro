@@ -19,12 +19,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     src/main.cpp \
     src/ui/MainWindow.cpp \
+    src/ui/FFmpegSetupDialog.cpp \
     src/core/FileProcessor.cpp \
     src/core/MuxingTask.cpp \
     src/core/MediaAnalyzer.cpp
 
 HEADERS += \
     src/ui/MainWindow.h \
+    src/ui/FFmpegSetupDialog.h \
     src/core/FileProcessor.h \
     src/core/MuxingTask.h \
     src/core/MediaAnalyzer.h
@@ -32,9 +34,16 @@ HEADERS += \
 FORMS += \
     src/ui/MainWindow.ui
 
+# NOTE: Resource files (app.rc, app.icns, Info.plist) have been commented out
+# To add them back, create the resources/ directory and the appropriate files:
+# - resources/app.rc (Windows resource file with version info and icon)
+# - resources/app.icns (macOS application icon)  
+# - resources/Info.plist (macOS application metadata)
+# Then uncomment the respective lines in the platform-specific sections below.
+
 # Windows specific settings
 win32 {
-    RC_FILE = resources/app.rc
+    # RC_FILE = resources/app.rc  # Commented out - resource file not yet created
     CONFIG += windows
     VERSION = 1.0.0
     QMAKE_TARGET_PRODUCT = "Pro Muxer"
@@ -44,8 +53,8 @@ win32 {
 
 # macOS specific settings
 macx {
-    ICON = resources/app.icns
-    QMAKE_INFO_PLIST = resources/Info.plist
+    # ICON = resources/app.icns  # Commented out - resource file not yet created
+    # QMAKE_INFO_PLIST = resources/Info.plist  # Commented out - resource file not yet created
 }
 
 # Linux specific settings

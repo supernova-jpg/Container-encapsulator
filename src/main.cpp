@@ -15,6 +15,12 @@ int main(int argc, char *argv[])
     // Set modern style
     app.setStyle(QStyleFactory::create("Fusion"));
     
+    // Set larger font for better readability
+    QFont font = app.font();
+    font.setPointSize(10); // Increase from default 9 to 10
+    font.setFamily("Segoe UI"); // Use modern Windows font
+    app.setFont(font);
+    
     // Apply dark theme
     QPalette darkPalette;
     darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));

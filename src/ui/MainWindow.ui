@@ -127,7 +127,12 @@
       </column>
       <column>
        <property name="text">
-        <string>Audio Codec</string>
+        <string>Bit Depth</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Color Space</string>
        </property>
       </column>
       <column>

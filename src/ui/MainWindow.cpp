@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
+#include "FFmpegSetupDialog.h"
 #include "../core/FileProcessor.h"
 #include "../core/MediaAnalyzer.h"
 #include <QApplication>
@@ -10,6 +11,7 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QItemDelegate>
+#include <QTimer>
 
 // Table column definitions
 enum TableColumn {
@@ -18,10 +20,11 @@ enum TableColumn {
     COL_VIDEO_CODEC = 2,
     COL_RESOLUTION = 3,
     COL_FRAME_RATE = 4,
-    COL_AUDIO_CODEC = 5,
-    COL_DURATION = 6,
-    COL_FILE_SIZE = 7,
-    COL_OUTPUT_NAME = 8
+    COL_BIT_DEPTH = 5,
+    COL_COLOR_SPACE = 6,
+    COL_DURATION = 7,
+    COL_FILE_SIZE = 8,
+    COL_OUTPUT_NAME = 9
 };
 
 MainWindow::MainWindow(QWidget *parent)
@@ -43,9 +46,10 @@ MainWindow::MainWindow(QWidget *parent)
     ui->fileTable->setColumnWidth(COL_FILENAME, 200);
     ui->fileTable->setColumnWidth(COL_STATUS, 100);
     ui->fileTable->setColumnWidth(COL_VIDEO_CODEC, 100);
-    ui->fileTable->setColumnWidth(COL_RESOLUTION, 100);
-    ui->fileTable->setColumnWidth(COL_FRAME_RATE, 80);
-    ui->fileTable->setColumnWidth(COL_AUDIO_CODEC, 120);
+    ui->fileTable->setColumnWidth(COL_RESOLUTION, 120);
+    ui->fileTable->setColumnWidth(COL_FRAME_RATE, 90);
+    ui->fileTable->setColumnWidth(COL_BIT_DEPTH, 80);
+    ui->fileTable->setColumnWidth(COL_COLOR_SPACE, 100);
     ui->fileTable->setColumnWidth(COL_DURATION, 80);
     ui->fileTable->setColumnWidth(COL_FILE_SIZE, 80);
     
@@ -65,6 +69,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_analyzer, &MediaAnalyzer::analysisError, this, &MainWindow::onMediaAnalysisError);
     
     logMessage("Pro Muxer initialized successfully", LogLevel::Info);
+    
+    // Check FFmpeg environment after UI is fully loaded
+    QTimer::singleShot(500, this, &MainWindow::checkFFmpegEnvironment);
 }
 
 MainWindow::~MainWindow()
@@ -328,17 +335,17 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
             ui->fileTable->setItem(index, COL_VIDEO_CODEC, new QTableWidgetItem(info.videoCodec));
             ui->fileTable->setItem(index, COL_RESOLUTION, new QTableWidgetItem(info.resolution));
             ui->fileTable->setItem(index, COL_FRAME_RATE, new QTableWidgetItem(info.frameRate));
-            ui->fileTable->setItem(index, COL_AUDIO_CODEC, new QTableWidgetItem(info.audioCodec));
+            ui->fileTable->setItem(index, COL_BIT_DEPTH, new QTableWidgetItem(info.bitDepth));
+            ui->fileTable->setItem(index, COL_COLOR_SPACE, new QTableWidgetItem(info.colorSpace));
             ui->fileTable->setItem(index, COL_DURATION, new QTableWidgetItem(info.duration));
             ui->fileTable->setItem(index, COL_FILE_SIZE, new QTableWidgetItem(info.fileSize));
             
-            // Add combo box for raw streams
-            if (info.isRawStream) {
-                QComboBox *codecCombo = new QComboBox();
-                codecCombo->addItems({"H.264", "H.265", "MPEG-2", "MPEG-4", "VP9", "AV1"});
-                codecCombo->setCurrentText(info.videoCodec);
-                ui->fileTable->setCellWidget(index, COL_VIDEO_CODEC, codecCombo);
-            }
+            // Add editable combo boxes for key metadata fields
+            setupEditableCell(index, COL_VIDEO_CODEC, info.videoCodec, getVideoCodecOptions());
+            setupEditableCell(index, COL_RESOLUTION, info.resolution, getResolutionPresets());
+            setupEditableCell(index, COL_FRAME_RATE, info.frameRate, getFrameRateOptions());
+            setupEditableCell(index, COL_BIT_DEPTH, info.bitDepth, getBitDepthOptions());
+            setupEditableCell(index, COL_COLOR_SPACE, info.colorSpace, getColorSpaceOptions());
         }
     }
     
@@ -355,8 +362,162 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
 
 void MainWindow::onMediaAnalysisError(int index, const QString &error)
 {
-    updateTableRowStatus(index, "Analysis Failed");
-    logMessage(QString("Analysis failed for file %1: %2").arg(index + 1).arg(error), LogLevel::Error);
+    updateTableRowStatus(index, "Smart Defaults Applied");
+    logMessage(QString("Analysis failed for file %1: %2. Applying intelligent fallback defaults.").arg(index + 1).arg(error), LogLevel::Warning);
+    
+    // Create default MediaInfo with enhanced intelligent guesses and enable editing
+    if (index >= 0 && index < m_mediaInfos.size() && index < m_files.size()) {
+        QString filePath = m_files[index];
+        MediaInfo info;
+        
+        // Make intelligent guesses based on filename and extension
+        QFileInfo fileInfo(filePath);
+        QString extension = fileInfo.suffix().toLower();
+        QString fileName = fileInfo.baseName().toLower();
+        QString fullFileName = fileInfo.fileName().toLower();
+        
+        // Enhanced codec guessing from extension and filename patterns
+        if (extension == "h264" || extension == "264" || fullFileName.contains("avc")) {
+            info.videoCodec = "H.264";
+            info.bitDepth = "8 bit";
+        } else if (extension == "h265" || extension == "hevc" || extension == "265" || fullFileName.contains("hevc")) {
+            info.videoCodec = "H.265/HEVC";
+            info.bitDepth = fullFileName.contains("hdr") || fullFileName.contains("10bit") ? "10 bit" : "8 bit";
+        } else if (fullFileName.contains("av1")) {
+            info.videoCodec = "AV1";
+            info.bitDepth = "10 bit";
+        } else if (fullFileName.contains("vp9")) {
+            info.videoCodec = "VP9";
+            info.bitDepth = "8 bit";
+        } else if (extension == "bin" && fullFileName.contains("prores")) {
+            info.videoCodec = "ProRes";
+            info.bitDepth = "10 bit";
+        } else {
+            info.videoCodec = "H.264"; // Most common fallback
+            info.bitDepth = "8 bit";
+        }
+        
+        // Enhanced resolution guessing with more patterns
+        if (fileName.contains("8k") || fileName.contains("4320") || fileName.contains("7680")) {
+            info.resolution = "7680x4320 (8K UHD)";
+            info.colorSpace = "Rec. 2020 (HDR)";
+        } else if (fileName.contains("4k") || fileName.contains("2160") || fileName.contains("3840") || fileName.contains("uhd")) {
+            info.resolution = "3840x2160 (4K UHD)";
+            info.colorSpace = fullFileName.contains("hdr") ? "Rec. 2020 (HDR)" : "Rec. 709 (sRGB)";
+        } else if (fileName.contains("qhd") || fileName.contains("1440") || fileName.contains("2560")) {
+            info.resolution = "2560x1440 (QHD)";
+            info.colorSpace = "Rec. 709 (sRGB)";
+        } else if (fileName.contains("fhd") || fileName.contains("1080") || fileName.contains("1920")) {
+            info.resolution = "1920x1080 (FHD)";
+            info.colorSpace = "Rec. 709 (sRGB)";
+        } else if (fileName.contains("hd") || fileName.contains("720") || fileName.contains("1280")) {
+            info.resolution = "1280x720 (HD)";
+            info.colorSpace = "Rec. 709 (sRGB)";
+        } else if (fileName.contains("480p") || fileName.contains("854")) {
+            info.resolution = "854x480";
+            info.colorSpace = "Rec. 601 (SDTV)";
+        } else {
+            // Default based on file size heuristics
+            qint64 fileSize = fileInfo.size();
+            if (fileSize > 500 * 1024 * 1024) { // >500MB likely 4K
+                info.resolution = "3840x2160 (4K UHD)";
+                info.colorSpace = "Rec. 709 (sRGB)";
+            } else if (fileSize > 100 * 1024 * 1024) { // >100MB likely FHD
+                info.resolution = "1920x1080 (FHD)";
+                info.colorSpace = "Rec. 709 (sRGB)";
+            } else {
+                info.resolution = "1280x720 (HD)";
+                info.colorSpace = "Rec. 709 (sRGB)";
+            }
+        }
+        
+        // Enhanced frame rate guessing with more patterns
+        if (fileName.contains("120fps") || fileName.contains("120p")) {
+            info.frameRate = "120.000 fps";
+        } else if (fileName.contains("100fps") || fileName.contains("100p")) {
+            info.frameRate = "100.000 fps";
+        } else if (fileName.contains("60fps") || fileName.contains("60p")) {
+            info.frameRate = "60.000 fps";
+        } else if (fileName.contains("59.94") || fileName.contains("5994")) {
+            info.frameRate = "59.940 fps";
+        } else if (fileName.contains("50fps") || fileName.contains("50p")) {
+            info.frameRate = "50.000 fps";
+        } else if (fileName.contains("48fps") || fileName.contains("48p")) {
+            info.frameRate = "48.000 fps";
+        } else if (fileName.contains("30fps") || fileName.contains("30p")) {
+            info.frameRate = "30.000 fps";
+        } else if (fileName.contains("29.97") || fileName.contains("2997")) {
+            info.frameRate = "29.970 fps";
+        } else if (fileName.contains("25fps") || fileName.contains("25p")) {
+            info.frameRate = "25.000 fps";
+        } else if (fileName.contains("24fps") || fileName.contains("24p") || fileName.contains("cinema")) {
+            info.frameRate = "24.000 fps";
+        } else if (fileName.contains("23.976") || fileName.contains("23976")) {
+            info.frameRate = "23.976 fps";
+        } else {
+            // Smart default based on resolution
+            if (info.resolution.contains("4K") || info.resolution.contains("8K")) {
+                info.frameRate = "24.000 fps"; // 4K/8K often cinema
+            } else if (fileName.contains("pal") || fileName.contains("europe")) {
+                info.frameRate = "25.000 fps"; // PAL regions
+            } else {
+                info.frameRate = "30.000 fps"; // NTSC default
+            }
+        }
+        
+        // Enhanced bit depth detection
+        if (fullFileName.contains("10bit") || fullFileName.contains("10-bit")) {
+            info.bitDepth = "10 bit";
+        } else if (fullFileName.contains("12bit") || fullFileName.contains("12-bit")) {
+            info.bitDepth = "12 bit";
+        } else if (fullFileName.contains("16bit") || fullFileName.contains("16-bit")) {
+            info.bitDepth = "16 bit";
+        } else if (fullFileName.contains("hdr")) {
+            info.bitDepth = "10 bit"; // HDR typically 10-bit
+        }
+        
+        // Enhanced color space detection
+        if (fullFileName.contains("hdr") || fullFileName.contains("rec2020") || fullFileName.contains("bt2020")) {
+            info.colorSpace = "Rec. 2020 (HDR)";
+        } else if (fullFileName.contains("p3") || fullFileName.contains("dci-p3")) {
+            info.colorSpace = "DCI-P3";
+        } else if (fullFileName.contains("rec601") || fullFileName.contains("bt601")) {
+            info.colorSpace = "Rec. 601 (SDTV)";
+        } else if (fullFileName.contains("adobe") || fullFileName.contains("adobergb")) {
+            info.colorSpace = "Adobe RGB";
+        }
+        
+        // Set other default values
+        info.duration = "Unknown";
+        info.fileSize = formatFileSize(fileInfo.size());
+        info.isRawStream = true;
+        info.analyzed = false; // Mark as not analyzed to indicate manual editing needed
+        
+        m_mediaInfos[index] = info;
+        
+        // Update table with editable cells immediately
+        if (index < ui->fileTable->rowCount()) {
+            setupEditableCell(index, COL_VIDEO_CODEC, info.videoCodec, getVideoCodecOptions());
+            setupEditableCell(index, COL_RESOLUTION, info.resolution, getResolutionPresets());
+            setupEditableCell(index, COL_FRAME_RATE, info.frameRate, getFrameRateOptions());
+            setupEditableCell(index, COL_BIT_DEPTH, info.bitDepth, getBitDepthOptions());
+            setupEditableCell(index, COL_COLOR_SPACE, info.colorSpace, getColorSpaceOptions());
+            
+            ui->fileTable->setItem(index, COL_DURATION, new QTableWidgetItem(info.duration));
+            ui->fileTable->setItem(index, COL_FILE_SIZE, new QTableWidgetItem(info.fileSize));
+            
+            // Highlight editable cells to indicate manual review is needed
+            for (int col = COL_VIDEO_CODEC; col <= COL_COLOR_SPACE; ++col) {
+                if (ui->fileTable->cellWidget(index, col)) {
+                    ui->fileTable->cellWidget(index, col)->setStyleSheet(
+                        "QComboBox { font-size: 12px; padding: 2px; background-color: #fff3cd; border: 2px solid #ffc107; }"
+                    );
+                }
+            }
+        }
+        
+        logMessage(QString("Smart defaults applied for file %1 based on filename patterns. Yellow highlighting indicates manual review recommended.").arg(index + 1), LogLevel::Info);
+    }
 }
 
 void MainWindow::onTableCellChanged(int row, int column)
@@ -393,7 +554,8 @@ void MainWindow::addFilesToTable(const QStringList &files)
             ui->fileTable->setItem(row, COL_VIDEO_CODEC, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_RESOLUTION, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_FRAME_RATE, new QTableWidgetItem("Unknown"));
-            ui->fileTable->setItem(row, COL_AUDIO_CODEC, new QTableWidgetItem("Unknown"));
+            ui->fileTable->setItem(row, COL_BIT_DEPTH, new QTableWidgetItem("Unknown"));
+            ui->fileTable->setItem(row, COL_COLOR_SPACE, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_DURATION, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_FILE_SIZE, new QTableWidgetItem(formatFileSize(fileInfo.size())));
             
@@ -511,6 +673,130 @@ void MainWindow::updateFileTable()
             QString outputName = getOutputFileName(m_files[i]);
             ui->fileTable->setItem(i, COL_OUTPUT_NAME, new QTableWidgetItem(outputName));
         }
+    }
+}
+
+void MainWindow::setupEditableCell(int row, int column, const QString &currentValue, const QStringList &options)
+{
+    QComboBox *combo = new QComboBox();
+    combo->setEditable(true);
+    combo->addItems(options);
+    combo->setCurrentText(currentValue);
+    combo->setStyleSheet("QComboBox { font-size: 12px; padding: 2px; }");
+    
+    // Connect to update MediaInfo when value changes
+    connect(combo, QOverload<const QString &>::of(&QComboBox::currentTextChanged), 
+            this, [this, row, column](const QString &text) {
+        // Update the underlying MediaInfo structure
+        if (row < m_mediaInfos.size()) {
+            MediaInfo &info = m_mediaInfos[row];
+            switch (column) {
+                case COL_VIDEO_CODEC: info.videoCodec = text; break;
+                case COL_RESOLUTION: info.resolution = text; break;
+                case COL_FRAME_RATE: info.frameRate = text; break;
+                case COL_BIT_DEPTH: info.bitDepth = text; break;
+                case COL_COLOR_SPACE: info.colorSpace = text; break;
+            }
+            logMessage(QString("Updated %1 for file %2 to: %3")
+                      .arg(ui->fileTable->horizontalHeaderItem(column)->text())
+                      .arg(row + 1)
+                      .arg(text), LogLevel::Info);
+        }
+    });
+    
+    ui->fileTable->setCellWidget(row, column, combo);
+}
+
+QStringList MainWindow::getVideoCodecOptions()
+{
+    return {"H.264", "H.265/HEVC", "AV1", "VP9", "VP8", "MPEG-2", "MPEG-4", "ProRes", "DNxHD", "Unknown"};
+}
+
+QStringList MainWindow::getResolutionPresets()
+{
+    return {
+        "3840x2160 (4K UHD)",
+        "7680x4320 (8K UHD)", 
+        "1920x1080 (FHD)",
+        "1280x720 (HD)",
+        "2560x1440 (QHD)",
+        "3440x1440 (UWQHD)",
+        "1920x800 (Cinema)",
+        "1680x1050",
+        "1600x900",
+        "1366x768",
+        "1280x960",
+        "1024x768",
+        "854x480",
+        "640x480",
+        "Custom",
+        "Unknown"
+    };
+}
+
+QStringList MainWindow::getFrameRateOptions()
+{
+    return {
+        "23.976 fps",
+        "24.000 fps", 
+        "25.000 fps",
+        "29.970 fps",
+        "30.000 fps",
+        "48.000 fps",
+        "50.000 fps",
+        "59.940 fps", 
+        "60.000 fps",
+        "100.000 fps",
+        "120.000 fps",
+        "Variable",
+        "Unknown"
+    };
+}
+
+QStringList MainWindow::getBitDepthOptions()
+{
+    return {
+        "8 bit",
+        "10 bit", 
+        "12 bit",
+        "16 bit",
+        "32 bit",
+        "Unknown"
+    };
+}
+
+QStringList MainWindow::getColorSpaceOptions()
+{
+    return {
+        "Rec. 709 (sRGB)",
+        "Rec. 2020 (HDR)",
+        "Rec. 601 (SDTV)",
+        "DCI-P3",
+        "Adobe RGB",
+        "ProPhoto RGB",
+        "SMPTE 170M",
+        "BT.470 System M",
+        "BT.470 System B/G",
+        "Linear",
+        "Unknown"
+    };
+}
+
+void MainWindow::checkFFmpegEnvironment()
+{
+    QString ffmpegPath, ffprobePath, errorMessage;
+    
+    if (!FFmpegSetupDialog::checkFFmpegAvailability(ffmpegPath, ffprobePath, errorMessage)) {
+        logMessage("FFmpeg environment check failed: " + errorMessage, LogLevel::Warning);
+        
+        // Show setup dialog
+        if (!FFmpegSetupDialog::showSetupDialogIfNeeded(this)) {
+            logMessage("User chose to skip FFmpeg setup. Some features may not work correctly.", LogLevel::Warning);
+        } else {
+            logMessage("FFmpeg environment configured successfully", LogLevel::Info);
+        }
+    } else {
+        logMessage("FFmpeg environment is ready", LogLevel::Info);
     }
 }
 

@@ -41,7 +41,12 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:cmake.org)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(python:*)",
+      "Bash(create_simple_icon.bat)",
+      "Bash(cmd /c:*)",
+      "Bash(powershell:*)",
+      "Bash(\"C:/Qt/6.9.1/mingw_64/bin/qmake.exe\" -o Makefile ProMuxer.pro)"
     ],
     "deny": []
   }

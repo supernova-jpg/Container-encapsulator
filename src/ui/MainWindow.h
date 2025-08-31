@@ -29,6 +29,8 @@ struct MediaInfo {
     QString duration;
     QString fileSize;
     QString bitrate;
+    QString bitDepth;
+    QString colorSpace;
     bool isRawStream = false;
     bool analyzed = false;
 };
@@ -82,6 +84,9 @@ private slots:
     // Table interaction
     void onTableCellChanged(int row, int column);
     void onTableItemDoubleClicked(int row, int column);
+    
+    // Environment setup
+    void checkFFmpegEnvironment();
 
 private:
     void setupConnections();
@@ -95,6 +100,14 @@ private:
     bool shouldShowLogLevel(LogLevel level);
     void updateTableRowStatus(int row, const QString &status);
     void showCompatibilityWarning(const QString &codec, const QString &container);
+    
+    // Editable table functionality
+    void setupEditableCell(int row, int column, const QString &currentValue, const QStringList &options);
+    QStringList getVideoCodecOptions();
+    QStringList getResolutionPresets();
+    QStringList getFrameRateOptions();
+    QStringList getBitDepthOptions();
+    QStringList getColorSpaceOptions();
     
     Ui::MainWindow *ui;
     

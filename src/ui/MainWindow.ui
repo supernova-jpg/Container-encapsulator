@@ -288,6 +288,169 @@
          </property>
         </widget>
        </item>
+       <!-- BIN to YUV specific settings (no GroupBox title as requested) -->
+       <item row="3" column="0" colspan="3">
+        <widget class="QWidget" name="binToYuvGroup">
+         <property name="visible">
+          <bool>false</bool>
+         </property>
+         <layout class="QGridLayout" name="binToYuvLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="sequenceLabel">
+            <property name="text">
+             <string>Sequence ID:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="sequenceEdit">
+            <property name="placeholderText">
+             <string>A01</string>
+            </property>
+            <property name="toolTip">
+             <string>Sequence identifier (e.g. A01, B02)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QLabel" name="bitDepthYuvLabel">
+            <property name="text">
+             <string>Bit Depth:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3">
+           <widget class="QComboBox" name="bitDepthYuvCombo">
+            <item>
+             <property name="text">
+              <string>8bit</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>10bit</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>12bit</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="sceneLabel">
+            <property name="text">
+             <string>Scene Name:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" colspan="3">
+           <widget class="QLineEdit" name="sceneEdit">
+            <property name="placeholderText">
+             <string>IndoorTexture</string>
+            </property>
+            <property name="toolTip">
+             <string>Scene description name</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="resolutionYuvLabel">
+            <property name="text">
+             <string>Resolution:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QComboBox" name="resolutionYuvCombo">
+            <item>
+             <property name="text">
+              <string>1920x1080</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>3840x2160</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>2560x1440</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>1280x720</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QLabel" name="frameRateYuvLabel">
+            <property name="text">
+             <string>Frame Rate:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="3">
+           <widget class="QComboBox" name="frameRateYuvCombo">
+            <item>
+             <property name="text">
+              <string>30fps</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>60fps</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>24fps</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>25fps</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="colorFormatLabel">
+            <property name="text">
+             <string>Color Format:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QComboBox" name="colorFormatCombo">
+            <item>
+             <property name="text">
+              <string>420p</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>yuv420p10le</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="3" column="2" colspan="2">
+           <widget class="QLabel" name="previewLabel">
+            <property name="text">
+             <string>Preview: A01_8bit_Scene_1920x1080_30fps_420p.yuv</string>
+            </property>
+            <property name="styleSheet">
+             <string>QLabel { color: #10b981; font-family: monospace; }</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
       </layout>
      </widget>
     </item>
@@ -298,48 +461,95 @@
        <string>Processing</string>
       </property>
       <property name="maximumHeight">
-       <number>80</number>
+       <number>120</number>
       </property>
-      <layout class="QHBoxLayout" name="processLayout">
+      <layout class="QVBoxLayout" name="processLayout">
+       <!-- Processing Mode Selection -->
        <item>
-        <widget class="QPushButton" name="startBtn">
-         <property name="text">
-          <string>Start Processing</string>
-         </property>
-         <property name="toolTip">
-          <string>Begin batch muxing process</string>
-         </property>
-        </widget>
+        <layout class="QHBoxLayout" name="modeLayout">
+         <item>
+          <widget class="QLabel" name="modeLabel">
+           <property name="text">
+            <string>Processing Mode:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QRadioButton" name="muxingModeRadio">
+           <property name="text">
+            <string>Video Muxing</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+           <property name="toolTip">
+            <string>Standard video file muxing and processing</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QRadioButton" name="binToYuvModeRadio">
+           <property name="text">
+            <string>BIN -> YUV Conversion</string>
+           </property>
+           <property name="toolTip">
+            <string>Convert BIN files to YUV with proper naming</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="modeSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </item>
+       <!-- Processing Controls -->
        <item>
-        <widget class="QPushButton" name="stopBtn">
-         <property name="text">
-          <string>Stop</string>
-         </property>
-         <property name="toolTip">
-          <string>Stop current processing</string>
-         </property>
-         <property name="enabled">
-          <bool>false</bool>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QProgressBar" name="progressBar">
-         <property name="toolTip">
-          <string>Overall processing progress</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="statusLabel">
-         <property name="text">
-          <string>Ready</string>
-         </property>
-         <property name="minimumWidth">
-          <number>200</number>
-         </property>
-        </widget>
+        <layout class="QHBoxLayout" name="processButtonsLayout">
+         <item>
+          <widget class="QPushButton" name="startBtn">
+           <property name="text">
+            <string>Start Processing</string>
+           </property>
+           <property name="toolTip">
+            <string>Begin batch muxing process</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="stopBtn">
+           <property name="text">
+            <string>Stop</string>
+           </property>
+           <property name="toolTip">
+            <string>Stop current processing</string>
+           </property>
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QProgressBar" name="progressBar">
+           <property name="toolTip">
+            <string>Overall processing progress</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="statusLabel">
+           <property name="text">
+            <string>Ready</string>
+           </property>
+           <property name="minimumWidth">
+            <number>200</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>

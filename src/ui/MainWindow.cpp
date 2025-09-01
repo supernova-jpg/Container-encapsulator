@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QItemDelegate>
 #include <QTimer>
+#include <QRegularExpression>
 #ifdef Q_OS_WIN
 #include <QSettings>
 #endif
@@ -39,6 +40,20 @@ MainWindow::MainWindow(QWidget *parent)
     , m_processing(false)
 {
     ui->setupUi(this);
+    
+    // Create FFmpeg status label for status bar
+    m_ffmpegStatusLabel = new QLabel(this);
+    statusBar()->addPermanentWidget(m_ffmpegStatusLabel);
+    m_ffmpegStatusLabel->setText("FFmpeg: Checking...");
+    m_ffmpegStatusLabel->setStyleSheet("QLabel { color: orange; padding: 2px 8px; }");
+    m_ffmpegStatusLabel->setCursor(Qt::PointingHandCursor);
+    
+    // Install event filter for context menu
+    ui->fileTable->installEventFilter(this);
+    
+    // Set initial processing mode
+    ui->muxingModeRadio->setChecked(true);
+    ui->binToYuvGroup->setVisible(false);
     
     // Set initial output folder
     ui->outputFolderEdit->setText(
@@ -79,6 +94,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_analyzer, &MediaAnalyzer::analysisFinished, this, &MainWindow::onMediaAnalysisFinished);
     connect(m_analyzer, &MediaAnalyzer::analysisError, this, &MainWindow::onMediaAnalysisError);
     
+    // Load settings
+    loadSettings();
+    
     logMessage("Pro Muxer initialized successfully", LogLevel::Info);
     
     // Check FFmpeg environment after UI is fully loaded
@@ -90,6 +108,10 @@ MainWindow::~MainWindow()
     if (m_processor && m_processing) {
         m_processor->stop();
     }
+    
+    // Save settings
+    saveSettings();
+    
     delete ui;
 }
 
@@ -117,9 +139,30 @@ void MainWindow::setupConnections()
     connect(ui->warningCheck, &QCheckBox::toggled, this, &MainWindow::onLogFilterChanged);
     connect(ui->errorCheck, &QCheckBox::toggled, this, &MainWindow::onLogFilterChanged);
     
+    // Processing mode
+    connect(ui->muxingModeRadio, &QRadioButton::toggled, this, &MainWindow::onProcessingModeChanged);
+    connect(ui->binToYuvModeRadio, &QRadioButton::toggled, this, &MainWindow::onProcessingModeChanged);
+    
+    // BIN→YUV settings
+    connect(ui->sequenceEdit, &QLineEdit::textChanged, this, &MainWindow::onBinToYuvSettingsChanged);
+    connect(ui->bitDepthYuvCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onBinToYuvSettingsChanged);
+    connect(ui->sceneEdit, &QLineEdit::textChanged, this, &MainWindow::onBinToYuvSettingsChanged);
+    connect(ui->resolutionYuvCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onBinToYuvSettingsChanged);
+    connect(ui->frameRateYuvCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onBinToYuvSettingsChanged);
+    connect(ui->colorFormatCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onBinToYuvSettingsChanged);
+    
+    // FFmpeg status
+    connect(m_ffmpegStatusLabel, &QLabel::linkActivated, this, &MainWindow::onFFmpegStatusClicked);
+    
     // Table
     connect(ui->fileTable, &QTableWidget::cellChanged, this, &MainWindow::onTableCellChanged);
     connect(ui->fileTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableItemDoubleClicked);
+    connect(ui->fileTable, &QTableWidget::customContextMenuRequested, this, &MainWindow::showTableContextMenu);
+    ui->fileTable->setContextMenuPolicy(Qt::CustomContextMenu);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
@@ -817,6 +860,8 @@ void MainWindow::checkFFmpegEnvironment()
     QString ffmpegPath, ffprobePath, errorMessage;
     
     if (!FFmpegSetupDialog::checkFFmpegAvailability(ffmpegPath, ffprobePath, errorMessage)) {
+        m_ffmpegStatusLabel->setText("FFmpeg: Not found");
+        m_ffmpegStatusLabel->setStyleSheet("QLabel { color: red; padding: 2px 8px; }");
         logMessage("FFmpeg environment check failed: " + errorMessage, LogLevel::Warning);
         
         // Show setup dialog
@@ -824,9 +869,24 @@ void MainWindow::checkFFmpegEnvironment()
             logMessage("User chose to skip FFmpeg setup. Some features may not work correctly.", LogLevel::Warning);
         } else {
             logMessage("FFmpeg environment configured successfully", LogLevel::Info);
+            // Re-check after setup
+            QTimer::singleShot(100, this, &MainWindow::checkFFmpegEnvironment);
         }
     } else {
-        logMessage("FFmpeg environment is ready", LogLevel::Info);
+        // Get FFmpeg version
+        QProcess process;
+        process.start(ffprobePath, QStringList() << "-version");
+        process.waitForFinished(3000);
+        
+        QString version = "Unknown";
+        if (process.exitCode() == 0) {
+            QString output = process.readAllStandardOutput();
+            version = extractVersionInfo(output);
+        }
+        
+        m_ffmpegStatusLabel->setText(QString("FFprobe found in PATH - Version: %1").arg(version));
+        m_ffmpegStatusLabel->setStyleSheet("QLabel { color: green; padding: 2px 8px; }");
+        logMessage(QString("FFmpeg environment is ready - Version: %1").arg(version), LogLevel::Info);
     }
 }
 
@@ -851,4 +911,259 @@ QStringList CodecComboDelegate::getVideoCodecs()
 QStringList CodecComboDelegate::getAudioCodecs()
 {
     return {"AAC", "MP3", "AC3", "DTS", "PCM", "Vorbis", "Opus"};
+}
+
+// Missing function implementations
+void MainWindow::onProcessingModeChanged()
+{
+    bool isBinToYuv = ui->binToYuvModeRadio->isChecked();
+    ui->binToYuvGroup->setVisible(isBinToYuv);
+    
+    // Update preview when mode changes
+    if (isBinToYuv) {
+        onBinToYuvSettingsChanged();
+        logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
+    } else {
+        logMessage("Switched to muxing processing mode", LogLevel::Info);
+    }
+}
+
+void MainWindow::onBinToYuvSettingsChanged()
+{
+    if (!ui->binToYuvModeRadio->isChecked()) {
+        return; // Only update preview in BIN→YUV mode
+    }
+    
+    QString sequence = ui->sequenceEdit->text();
+    QString bitDepth = ui->bitDepthYuvCombo->currentText();
+    QString scene = ui->sceneEdit->text();
+    QString resolution = ui->resolutionYuvCombo->currentText();
+    QString frameRate = ui->frameRateYuvCombo->currentText();
+    QString colorFormat = ui->colorFormatCombo->currentText();
+    
+    // Generate preview filename
+    QString preview = QString("%1_%2bit_%3_%4_%5fps_%6.yuv")
+                     .arg(sequence.isEmpty() ? "[序列代号]" : sequence)
+                     .arg(bitDepth.isEmpty() ? "[位深]" : bitDepth)
+                     .arg(scene.isEmpty() ? "[场景描述名]" : scene)
+                     .arg(resolution.isEmpty() ? "[分辨率]" : resolution)
+                     .arg(frameRate.isEmpty() ? "[帧率]" : frameRate.replace(" fps", ""))
+                     .arg(colorFormat.isEmpty() ? "420p/yuv420p10le" : colorFormat);
+    
+    ui->previewLabel->setText(preview);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->fileTable && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+        if (mouseEvent->button() == Qt::RightButton) {
+            QTableWidgetItem *item = ui->fileTable->itemAt(mouseEvent->pos());
+            if (item) {
+                ui->fileTable->setCurrentItem(item);
+                showTableContextMenu(mouseEvent->pos());
+                return true;
+            }
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::showTableContextMenu(const QPoint &pos)
+{
+    int row = ui->fileTable->currentRow();
+    if (row < 0) return;
+    
+    QMenu contextMenu(this);
+    
+    contextMenu.addAction("Analyze File", this, [this, row]() {
+        analyzeFileAtRow(row);
+    });
+    
+    contextMenu.addSeparator();
+    
+    contextMenu.addAction("Apply Settings to Selected", this, [this, row]() {
+        applySettingsToSelected(row);
+    });
+    
+    contextMenu.addSeparator();
+    
+    contextMenu.addAction("Remove File", this, [this, row]() {
+        removeFileAtRow(row);
+    });
+    
+    contextMenu.exec(ui->fileTable->mapToGlobal(pos));
+}
+
+void MainWindow::applySettingsToSelected(int sourceRow)
+{
+    if (sourceRow < 0 || sourceRow >= m_mediaInfos.size()) {
+        return;
+    }
+    
+    const MediaInfo &sourceInfo = m_mediaInfos[sourceRow];
+    QItemSelectionModel *selection = ui->fileTable->selectionModel();
+    QModelIndexList selectedRows = selection->selectedRows();
+    
+    int appliedCount = 0;
+    foreach (const QModelIndex &index, selectedRows) {
+        int targetRow = index.row();
+        if (targetRow != sourceRow && targetRow < m_mediaInfos.size()) {
+            MediaInfo &targetInfo = m_mediaInfos[targetRow];
+            
+            // Copy settings
+            targetInfo.videoCodec = sourceInfo.videoCodec;
+            targetInfo.resolution = sourceInfo.resolution;
+            targetInfo.frameRate = sourceInfo.frameRate;
+            targetInfo.bitDepth = sourceInfo.bitDepth;
+            targetInfo.colorSpace = sourceInfo.colorSpace;
+            
+            // Update table display
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(targetRow, COL_VIDEO_CODEC))) {
+                combo->setCurrentText(sourceInfo.videoCodec);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(targetRow, COL_RESOLUTION))) {
+                combo->setCurrentText(sourceInfo.resolution);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(targetRow, COL_FRAME_RATE))) {
+                combo->setCurrentText(sourceInfo.frameRate);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(targetRow, COL_BIT_DEPTH))) {
+                combo->setCurrentText(sourceInfo.bitDepth);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(targetRow, COL_COLOR_SPACE))) {
+                combo->setCurrentText(sourceInfo.colorSpace);
+            }
+            
+            appliedCount++;
+        }
+    }
+    
+    logMessage(QString("Applied settings from file %1 to %2 selected files")
+              .arg(sourceRow + 1).arg(appliedCount), LogLevel::Info);
+}
+
+void MainWindow::removeFileAtRow(int row)
+{
+    if (row >= 0 && row < m_files.size()) {
+        QString fileName = QFileInfo(m_files[row]).fileName();
+        m_files.removeAt(row);
+        m_mediaInfos.removeAt(row);
+        ui->fileTable->removeRow(row);
+        logMessage(QString("Removed %1 from list").arg(fileName), LogLevel::Info);
+    }
+}
+
+void MainWindow::analyzeFileAtRow(int row)
+{
+    if (row >= 0 && row < m_files.size()) {
+        updateTableRowStatus(row, "Analyzing...");
+        m_analyzer->analyzeFile(row, m_files[row]);
+        logMessage(QString("Started analysis for file %1").arg(row + 1), LogLevel::Info);
+    }
+}
+
+void MainWindow::onFFmpegStatusClicked()
+{
+    // Show FFmpeg setup dialog
+    FFmpegSetupDialog::showSetupDialogIfNeeded(this);
+    
+    // Re-check FFmpeg environment
+    QTimer::singleShot(100, this, &MainWindow::checkFFmpegEnvironment);
+}
+
+QString MainWindow::extractVersionInfo(const QString &ffmpegOutput)
+{
+    QStringList lines = ffmpegOutput.split('\n');
+    for (const QString &line : lines) {
+        if (line.contains("ffmpeg version") || line.contains("ffprobe version")) {
+            // Extract version number from output like "ffmpeg version 7.1.1-full_build-www.gyan.dev"
+            QRegularExpression versionRegex("version\\s+([0-9]+\\.[0-9]+\\.?[0-9]*[^\\s]*)");
+            QRegularExpressionMatch match = versionRegex.match(line);
+            if (match.hasMatch()) {
+                return match.captured(1);
+            }
+        }
+    }
+    return "Unknown";
+}
+
+void MainWindow::loadSettings()
+{
+    QSettings settings;
+    
+    // Load window geometry
+    restoreGeometry(settings.value("geometry").toByteArray());
+    restoreState(settings.value("windowState").toByteArray());
+    
+    // Load output settings
+    ui->outputFolderEdit->setText(settings.value("outputFolder", 
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/ProMuxer_Output").toString());
+    ui->formatCombo->setCurrentText(settings.value("outputFormat", "mp4").toString());
+    ui->prefixEdit->setText(settings.value("outputPrefix").toString());
+    ui->suffixEdit->setText(settings.value("outputSuffix").toString());
+    
+    // Load processing mode
+    bool isBinToYuv = settings.value("processingMode", "muxing").toString() == "binToYuv";
+    ui->muxingModeRadio->setChecked(!isBinToYuv);
+    ui->binToYuvModeRadio->setChecked(isBinToYuv);
+    ui->binToYuvGroup->setVisible(isBinToYuv);
+    
+    // Load BIN→YUV settings
+    ui->sequenceEdit->setText(settings.value("binToYuv/sequence").toString());
+    ui->bitDepthYuvCombo->setCurrentText(settings.value("binToYuv/bitDepth", "10").toString());
+    ui->sceneEdit->setText(settings.value("binToYuv/scene").toString());
+    ui->resolutionYuvCombo->setCurrentText(settings.value("binToYuv/resolution", "1920x1080").toString());
+    ui->frameRateYuvCombo->setCurrentText(settings.value("binToYuv/frameRate", "30").toString());
+    ui->colorFormatCombo->setCurrentText(settings.value("binToYuv/colorFormat", "420p").toString());
+    
+    // Load other settings
+    ui->compatibilityCheck->setChecked(settings.value("compatibility", false).toBool());
+    ui->conflictCombo->setCurrentText(settings.value("conflictHandling", "Skip").toString());
+    
+    // Load log filters
+    ui->infoCheck->setChecked(settings.value("logFilters/info", true).toBool());
+    ui->warningCheck->setChecked(settings.value("logFilters/warning", true).toBool());
+    ui->errorCheck->setChecked(settings.value("logFilters/error", true).toBool());
+    
+    // Update internal state
+    onLogFilterChanged();
+    onBinToYuvSettingsChanged();
+    
+    logMessage("Settings loaded successfully", LogLevel::Info);
+}
+
+void MainWindow::saveSettings()
+{
+    QSettings settings;
+    
+    // Save window geometry
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState());
+    
+    // Save output settings
+    settings.setValue("outputFolder", ui->outputFolderEdit->text());
+    settings.setValue("outputFormat", ui->formatCombo->currentText());
+    settings.setValue("outputPrefix", ui->prefixEdit->text());
+    settings.setValue("outputSuffix", ui->suffixEdit->text());
+    
+    // Save processing mode
+    settings.setValue("processingMode", ui->binToYuvModeRadio->isChecked() ? "binToYuv" : "muxing");
+    
+    // Save BIN→YUV settings
+    settings.setValue("binToYuv/sequence", ui->sequenceEdit->text());
+    settings.setValue("binToYuv/bitDepth", ui->bitDepthYuvCombo->currentText());
+    settings.setValue("binToYuv/scene", ui->sceneEdit->text());
+    settings.setValue("binToYuv/resolution", ui->resolutionYuvCombo->currentText());
+    settings.setValue("binToYuv/frameRate", ui->frameRateYuvCombo->currentText());
+    settings.setValue("binToYuv/colorFormat", ui->colorFormatCombo->currentText());
+    
+    // Save other settings
+    settings.setValue("compatibility", ui->compatibilityCheck->isChecked());
+    settings.setValue("conflictHandling", ui->conflictCombo->currentText());
+    
+    // Save log filters
+    settings.setValue("logFilters/info", ui->infoCheck->isChecked());
+    settings.setValue("logFilters/warning", ui->warningCheck->isChecked());
+    settings.setValue("logFilters/error", ui->errorCheck->isChecked());
 }

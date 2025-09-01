@@ -47,7 +47,8 @@
       "Bash(cmd /c:*)",
       "Bash(powershell:*)",
       "Bash(\"C:/Qt/6.9.1/mingw_64/bin/qmake.exe\" -o Makefile ProMuxer.pro)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(tree:*)"
     ],
     "deny": []
   }

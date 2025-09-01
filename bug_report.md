@@ -9,4 +9,8 @@
 命令封装出的码流只能播放前1秒，之后的视频信息都被快速跳过去了，而没有保存全部的码流信息
 我们使用的命令类似于如下：Starting FFmpeg: "ffmpeg.exe" -fflags +genpts -framerate 30 -i \\10.142.116.58\l60049343\jingfen\V900_xiaomi\20250707\1_bin\fhd_10bit\xiaomi15-1B-VBR\B12_10bit_OutdoorBuliding_1920x1080_30fps_p010_HEVC_abr10000k.bin -c:v copy -f mp4 -movflags faststart C:\Users\w60031491\Documents\ProMuxer_Output\B12_10bit_OutdoorBuliding_1920x1080_30fps_p010_HEVC_abr10000k_muxed.mp4
 右键查看.mp4的详细信息，发现“视频时长”只有1秒钟，“帧速率”高达224.96帧/秒，完全不符合预期，即使我们加了-framerate 30参数。
-请你根据上述命令排查问题，修改代码完成我的需求
+
+- 请你根据上述命令排查问题，修改代码完成我的需求
+注意：
+- 码流封装必须严格使用c:v copy的模式，绝不能进行二次编码；
+- 我的码流是.bin文件，不确定ffmpeg能否正确解析出分辨率 (宽度和高度)、位深 (例如 8-bit, 10-bit)、帧率信息 (通常也包含)、色彩空间、色度采样 (Chroma Subsampling) 等等，但是软件已经包含了让用户手动指定这些参数的逻辑，所以请你在ffmpeg中手动指定这些参数。

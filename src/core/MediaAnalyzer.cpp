@@ -285,25 +285,33 @@ QString MediaAnalyzer::formatFileSize(qint64 size)
 QString MediaAnalyzer::findFFprobeExecutable()
 {
     QProcess process;
-    
+
+    // Prefer explicit environment variable if provided
+    QString envPath = qEnvironmentVariable("FFPROBE_PATH");
+    if (!envPath.isEmpty()) {
+        process.start(envPath, QStringList() << "--version");
+        if (process.waitForStarted(3000) && process.waitForFinished(3000) && process.exitCode() == 0) {
+            QString output = QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError());
+            parseAndLogFFprobeVersion(output);
+            return envPath;
+        }
+    }
+
 #ifdef Q_OS_WIN
     QString program = "ffprobe.exe";
 #else
     QString program = "ffprobe";
 #endif
-    
+
     // Check if ffprobe is available in PATH by running --version
     process.start(program, QStringList() << "--version");
-    if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
-        if (process.exitCode() == 0) {
-            // Parse version output to extract version and year (similar to ffmpeg)
-            QString output = QString::fromUtf8(process.readAllStandardOutput());
-            parseAndLogFFprobeVersion(output);
-            return program;
-        }
+    if (process.waitForStarted(3000) && process.waitForFinished(3000) && process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError());
+        parseAndLogFFprobeVersion(output);
+        return program;
     }
-    
-    return QString(); // Not found in PATH
+
+    return QString(); // Not found
 }
 
 QString MediaAnalyzer::getResolutionDescription(int width, int height)

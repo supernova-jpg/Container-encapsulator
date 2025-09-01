@@ -87,6 +87,7 @@ private slots:
     
     // Environment setup
     void checkFFmpegEnvironment();
+    void logFFmpegEnvironmentDetails();
 
 private:
     void setupConnections();

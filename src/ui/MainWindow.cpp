@@ -13,6 +13,8 @@
 #include <QApplication>
 #include <QItemDelegate>
 #include <QTimer>
+#include <QProcess>
+#include <QRegularExpression>
 #ifdef Q_OS_WIN
 #include <QSettings>
 #endif
@@ -827,7 +829,58 @@ void MainWindow::checkFFmpegEnvironment()
         }
     } else {
         logMessage("FFmpeg environment is ready", LogLevel::Info);
+        logFFmpegEnvironmentDetails();
     }
+}
+
+void MainWindow::logFFmpegEnvironmentDetails()
+{
+    // Ask core components to emit version logs (constructor already attempted detection)
+    // Re-run a lightweight version probe to ensure info is visible in UI logs at startup
+    QProcess probe;
+#ifdef Q_OS_WIN
+    const QString ffmpegProgram = "ffmpeg.exe";
+    const QString ffprobeProgram = "ffprobe.exe";
+#else
+    const QString ffmpegProgram = "ffmpeg";
+    const QString ffprobeProgram = "ffprobe";
+#endif
+
+    // Try explicit env overrides first
+    QString envFFmpeg = qEnvironmentVariable("FFMPEG_PATH");
+    QString envFFprobe = qEnvironmentVariable("FFPROBE_PATH");
+
+    auto logVersion = [&](const QString &program, const QString &label) {
+        QString exe = program;
+        if (!QFileInfo(exe).isExecutable()) {
+            // Fall back to PATH name
+            exe = label.contains("FFprobe") ? ffprobeProgram : ffmpegProgram;
+        }
+        probe.start(exe, QStringList() << "--version");
+        if (probe.waitForStarted(2000) && probe.waitForFinished(3000) && probe.exitCode() == 0) {
+            QString out = QString::fromUtf8(probe.readAllStandardOutput() + probe.readAllStandardError());
+            QString firstLine = out.split('\n').value(0);
+
+            // Extract version and year range
+            QString version = "Unknown";
+            QString years = "Unknown";
+            QRegularExpression verRe(label.contains("FFprobe") ?
+                                     QRegularExpression("ffprobe version ([\\\\d\\\\.\\\\w-]+)") :
+                                     QRegularExpression("ffmpeg version ([\\\\d\\\\.\\\\w-]+)"));
+            QRegularExpressionMatch vm = verRe.match(firstLine);
+            if (vm.hasMatch()) version = vm.captured(1);
+
+            QRegularExpression yrRe("Copyright \\\\(c\\\\) (\\\\d{4})-(\\\\d{4})");
+            QRegularExpressionMatch ym = yrRe.match(firstLine);
+            if (ym.hasMatch()) years = QString("%1-%2").arg(ym.captured(1), ym.captured(2));
+
+            logMessage(QString("%1 found in PATH - Version: %2, Release Years: %3")
+                           .arg(label, version, years), LogLevel::Info);
+        }
+    };
+
+    if (!envFFmpeg.isEmpty()) logVersion(envFFmpeg, "FFmpeg"); else logVersion(ffmpegProgram, "FFmpeg");
+    if (!envFFprobe.isEmpty()) logVersion(envFFprobe, "FFprobe"); else logVersion(ffprobeProgram, "FFprobe");
 }
 
 // CodecComboDelegate implementation

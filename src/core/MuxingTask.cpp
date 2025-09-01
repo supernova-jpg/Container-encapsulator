@@ -122,7 +122,12 @@ void MuxingTask::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
         }
     }
     
-    emit logMessage(message);
+    // Use appropriate log level based on success/failure
+    if (success) {
+        emit logMessage(message); // Success messages remain as default (INFO)
+    } else {
+        emit logMessage(QString("[ERROR] %1").arg(message)); // Failures should be ERROR level
+    }
     emit finished(success, message);
 }
 
@@ -153,7 +158,7 @@ void MuxingTask::onProcessError(QProcess::ProcessError error)
         break;
     }
     
-    emit logMessage(QString("Process error: %1").arg(errorString));
+    emit logMessage(QString("[ERROR] Process error: %1").arg(errorString));
     emit finished(false, errorString);
 }
 

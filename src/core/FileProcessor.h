@@ -56,6 +56,8 @@ private:
     int m_totalFiles;
     
     QString m_ffmpegPath;
+    
+    void parseAndLogFFmpegVersion(const QString &versionOutput);
 };
 
 #endif // FILEPROCESSOR_H

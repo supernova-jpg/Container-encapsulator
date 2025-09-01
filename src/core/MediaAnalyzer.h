@@ -48,6 +48,8 @@ private:
     QString findFFprobeExecutable();
     bool isRawStreamFile(const QString &filePath);
     MediaInfo createDefaultMediaInfo(const QString &filePath);
+    QString getResolutionDescription(int width, int height);
+    void parseAndLogFFprobeVersion(const QString &versionOutput);
     
     QProcess *m_probeProcess;
     QQueue<AnalysisTask> m_taskQueue;

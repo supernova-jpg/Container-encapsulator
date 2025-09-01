@@ -66,7 +66,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_processor, &FileProcessor::progress, this, &MainWindow::onTaskProgress);
     connect(m_processor, &FileProcessor::finished, this, &MainWindow::onTaskFinished);
     connect(m_processor, &FileProcessor::logMessage, this, [this](const QString &msg) {
-        onLogMessage(msg, LogLevel::Info);
+        // Automatically detect log level from message prefix
+        LogLevel level = LogLevel::Info;
+        if (msg.startsWith("[ERROR]")) {
+            level = LogLevel::Error;
+        } else if (msg.startsWith("[WARN]") || msg.startsWith("[WARNING]")) {
+            level = LogLevel::Warning;
+        }
+        onLogMessage(msg, level);
     });
     
     connect(m_analyzer, &MediaAnalyzer::analysisFinished, this, &MainWindow::onMediaAnalysisFinished);
@@ -209,7 +216,7 @@ void MainWindow::clearAll()
 void MainWindow::analyzeFiles()
 {
     if (m_files.isEmpty()) {
-        logMessage("No files to analyze", LogLevel::Warning);
+        logMessage("[WARNING] No files to analyze", LogLevel::Warning);
         return;
     }
     
@@ -246,13 +253,13 @@ void MainWindow::onCompatibilityToggled()
 void MainWindow::startProcessing()
 {
     if (m_files.isEmpty()) {
-        logMessage("No files to process!", LogLevel::Warning);
+        logMessage("[WARNING] No files to process!", LogLevel::Warning);
         return;
     }
     
     QString outputFolder = ui->outputFolderEdit->text();
     if (outputFolder.isEmpty()) {
-        logMessage("Please select an output folder!", LogLevel::Error);
+        logMessage("[ERROR] Please select an output folder!", LogLevel::Error);
         return;
     }
     

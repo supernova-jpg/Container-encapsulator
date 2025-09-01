@@ -6,6 +6,7 @@
 #include <QStandardPaths>
 #include <QDebug>
 #include <QRegularExpression>
+#include <QProcess>
 
 FileProcessor::FileProcessor(QObject *parent)
     : QObject(parent)
@@ -51,7 +52,7 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     emit logMessage(QString("FFmpeg path: %1").arg(m_ffmpegPath.isEmpty() ? "Not found" : m_ffmpegPath));
     
     if (m_ffmpegPath.isEmpty()) {
-        emit error("FFmpeg executable not found. Please ensure FFmpeg is installed and in PATH.");
+        emit logMessage("[ERROR] FFmpeg executable not found. Please ensure FFmpeg is installed and in PATH.");
         m_processing = false;
         return;
     }
@@ -118,7 +119,7 @@ void FileProcessor::processNextFile()
 {
     if (m_taskQueue.isEmpty()) {
         m_processing = false;
-        emit logMessage("All files processed successfully!");
+        emit logMessage("Batch processing completed. Review individual file results above.");
         emit finished();
         return;
     }
@@ -149,7 +150,8 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
                        .arg(QFileInfo(inputFile).fileName())
                        .arg(QFileInfo(outputFile).fileName()));
     } else {
-        emit logMessage(QString("✗ Failed to process: %1 - %2")
+        // This is a critical error that should be logged as ERROR level
+        emit logMessage(QString("[ERROR] ✗ Failed to process: %1 - %2")
                        .arg(QFileInfo(inputFile).fileName())
                        .arg(message));
     }
@@ -171,52 +173,25 @@ QString FileProcessor::buildFFmpegCommand(const QString &inputFile, const QStrin
     // Input file
     args << "-i" << QDir::toNativeSeparators(inputFile);
     
-    // For raw streams or files without proper metadata, add required parameters
+    // For raw streams, specify input framerate if available
     if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
-        // Add video codec if available
-        if (!mediaInfo.videoCodec.isEmpty() && mediaInfo.videoCodec != "Unknown") {
-            if (mediaInfo.videoCodec.contains("H.264", Qt::CaseInsensitive)) {
-                args << "-c:v" << "libx264";
-            } else if (mediaInfo.videoCodec.contains("H.265", Qt::CaseInsensitive)) {
-                args << "-c:v" << "libx265";
-            }
-        }
-        
-        // Add resolution if available
-        if (!mediaInfo.resolution.isEmpty() && !mediaInfo.resolution.contains("Unknown")) {
-            QString resolution = mediaInfo.resolution;
-            resolution.remove(QRegularExpression("\\s*\\([^)]*\\)")); // Remove description like "(FHD)"
-            if (resolution.contains("x")) {
-                args << "-s" << resolution.split(" ").first(); // Get just the resolution part
-            }
-        }
-        
-        // Add frame rate if available
         if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
             QString frameRate = mediaInfo.frameRate;
             frameRate.remove(" fps").remove("fps");
             bool ok;
             double fps = frameRate.toDouble(&ok);
             if (ok && fps > 0) {
-                args << "-r" << QString::number(fps);
+                // Insert framerate before the input file (it needs to come before -i)
+                args.insert(args.indexOf("-i"), "-framerate");
+                args.insert(args.indexOf("-i"), QString::number(fps));
             }
         }
-        
-        // Add pixel format based on bit depth
-        if (!mediaInfo.bitDepth.isEmpty() && !mediaInfo.bitDepth.contains("Unknown")) {
-            if (mediaInfo.bitDepth.contains("10")) {
-                args << "-pix_fmt" << "yuv420p10le";
-            } else if (mediaInfo.bitDepth.contains("8")) {
-                args << "-pix_fmt" << "yuv420p";
-            }
-        }
-    } else {
-        // For analyzed container files, copy streams
-        args << "-c" << "copy";
     }
     
-    // Map all streams
-    args << "-map" << "0";
+    // CRITICAL FIX: Always use stream copy mode to avoid re-encoding
+    // This fixes the core FFmpeg processing failures reported in bug_report.md
+    args << "-c:v" << "copy";
+    
     
     // Overwrite output file if it exists
     if (m_overwrite) {
@@ -246,44 +221,59 @@ QString FileProcessor::buildFFmpegCommand(const QString &inputFile, const QStrin
 
 QString FileProcessor::findFFmpegExecutable()
 {
-    // Common locations to search for FFmpeg
-    QStringList possiblePaths;
+    QProcess process;
     
 #ifdef Q_OS_WIN
-    possiblePaths << "ffmpeg.exe"
-                  << "C:/ffmpeg/bin/ffmpeg.exe"
-                  << "C:/Program Files/ffmpeg/bin/ffmpeg.exe"
-                  << "C:/Program Files (x86)/ffmpeg/bin/ffmpeg.exe";
+    QString program = "ffmpeg.exe";
 #else
-    possiblePaths << "ffmpeg"
-                  << "/usr/bin/ffmpeg"
-                  << "/usr/local/bin/ffmpeg"
-                  << "/opt/homebrew/bin/ffmpeg";
+    QString program = "ffmpeg";
 #endif
     
-    // First, try to find in PATH
-    QProcess process;
-    QString program = possiblePaths.first();
-    
-    process.start(program, QStringList() << "-version");
+    // Check if ffmpeg is available in PATH by running --version
+    process.start(program, QStringList() << "--version");
     if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
         if (process.exitCode() == 0) {
+            // Parse version output to extract version and year
+            QString output = QString::fromUtf8(process.readAllStandardOutput());
+            parseAndLogFFmpegVersion(output);
             return program;
         }
     }
     
-    // Try specific paths
-    for (int i = 1; i < possiblePaths.size(); ++i) {
-        const QString &path = possiblePaths[i];
-        if (QFile::exists(path)) {
-            process.start(path, QStringList() << "-version");
-            if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
-                if (process.exitCode() == 0) {
-                    return path;
-                }
-            }
-        }
+    return QString(); // Not found in PATH
+}
+
+void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
+{
+    // Parse FFmpeg version information from --version output
+    // Example output: "ffmpeg version 4.4.2 Copyright (c) 2000-2021 the FFmpeg developers"
+    
+    QStringList lines = versionOutput.split('\n');
+    if (lines.isEmpty()) {
+        emit logMessage("FFmpeg found in PATH, but version information unavailable");
+        return;
     }
     
-    return QString(); // Not found
+    QString firstLine = lines.first();
+    
+    // Extract version number
+    QRegularExpression versionRegex(R"(ffmpeg version ([\d\.\w-]+))");
+    QRegularExpressionMatch versionMatch = versionRegex.match(firstLine);
+    QString version = "Unknown";
+    if (versionMatch.hasMatch()) {
+        version = versionMatch.captured(1);
+    }
+    
+    // Extract copyright year range
+    QRegularExpression yearRegex(R"(Copyright \(c\) (\d{4})-(\d{4}))");
+    QRegularExpressionMatch yearMatch = yearRegex.match(firstLine);
+    QString yearRange = "Unknown";
+    if (yearMatch.hasMatch()) {
+        QString startYear = yearMatch.captured(1);
+        QString endYear = yearMatch.captured(2);
+        yearRange = QString("%1-%2").arg(startYear).arg(endYear);
+    }
+    
+    emit logMessage(QString("FFmpeg found in PATH - Version: %1, Release Years: %2")
+                   .arg(version).arg(yearRange));
 }

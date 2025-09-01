@@ -284,45 +284,45 @@ QString MediaAnalyzer::formatFileSize(qint64 size)
 
 QString MediaAnalyzer::findFFprobeExecutable()
 {
-    QStringList possiblePaths;
+    QProcess process;
     
 #ifdef Q_OS_WIN
-    possiblePaths << "ffprobe.exe"
-                  << "C:/ffmpeg/bin/ffprobe.exe"
-                  << "C:/Program Files/ffmpeg/bin/ffprobe.exe"
-                  << "C:/Program Files (x86)/ffmpeg/bin/ffprobe.exe";
+    QString program = "ffprobe.exe";
 #else
-    possiblePaths << "ffprobe"
-                  << "/usr/bin/ffprobe"
-                  << "/usr/local/bin/ffprobe"
-                  << "/opt/homebrew/bin/ffprobe";
+    QString program = "ffprobe";
 #endif
     
-    // Try to find in PATH first
-    QProcess process;
-    QString program = possiblePaths.first();
-    
-    process.start(program, QStringList() << "-version");
+    // Check if ffprobe is available in PATH by running --version
+    process.start(program, QStringList() << "--version");
     if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
         if (process.exitCode() == 0) {
+            // Parse version output to extract version and year (similar to ffmpeg)
+            QString output = QString::fromUtf8(process.readAllStandardOutput());
+            parseAndLogFFprobeVersion(output);
             return program;
         }
     }
     
-    // Try specific paths
-    for (int i = 1; i < possiblePaths.size(); ++i) {
-        const QString &path = possiblePaths[i];
-        if (QFile::exists(path)) {
-            process.start(path, QStringList() << "-version");
-            if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
-                if (process.exitCode() == 0) {
-                    return path;
-                }
-            }
-        }
-    }
+    return QString(); // Not found in PATH
+}
+
+QString MediaAnalyzer::getResolutionDescription(int width, int height)
+{
+    if (width == 7680 && height == 4320) return "(8K UHD)";
+    if (width == 3840 && height == 2160) return "(4K UHD)";
+    if (width == 2560 && height == 1440) return "(QHD)";
+    if (width == 1920 && height == 1080) return "(FHD)";
+    if (width == 1280 && height == 720) return "(HD)";
+    if (width == 854 && height == 480) return "(SD)";
+    if (width == 640 && height == 480) return "(VGA)";
     
-    return QString(); // Not found
+    // Check for common aspect ratios
+    double ratio = (double)width / height;
+    if (abs(ratio - 16.0/9.0) < 0.01) return "(16:9)";
+    if (abs(ratio - 4.0/3.0) < 0.01) return "(4:3)";
+    if (abs(ratio - 21.0/9.0) < 0.01) return "(21:9)";
+    
+    return ""; // No specific description
 }
 
 bool MediaAnalyzer::isRawStreamFile(const QString &filePath)
@@ -341,25 +341,156 @@ MediaInfo MediaAnalyzer::createDefaultMediaInfo(const QString &filePath)
     
     info.fileSize = formatFileSize(fileInfo.size());
     info.duration = "Unknown";
-    info.resolution = "Unknown";
-    info.frameRate = "Unknown";
     info.audioCodec = "None";
-    info.bitDepth = "Unknown";
-    info.colorSpace = "Unknown";
     
-    // Try to guess codec from extension
+    // Enhanced intelligent parsing from filename patterns
+    QString fileName = fileInfo.fileName().toLower();
+    QString baseName = fileInfo.baseName().toLower();
     QString extension = fileInfo.suffix().toLower();
-    if (extension == "h264" || extension == "264") {
+    
+    // Parse video codec from extension and filename
+    if (extension == "h264" || extension == "264" || fileName.contains("avc") || fileName.contains("h264")) {
         info.videoCodec = "H.264";
-        info.bitDepth = "8 bit"; // H.264 is commonly 8-bit
-        info.colorSpace = "Rec. 709"; // Common default
-    } else if (extension == "h265" || extension == "hevc" || extension == "265") {
+    } else if (extension == "h265" || extension == "hevc" || extension == "265" || 
+               fileName.contains("hevc") || fileName.contains("h265")) {
         info.videoCodec = "H.265";
-        info.bitDepth = "10 bit"; // H.265 often uses 10-bit
-        info.colorSpace = "Rec. 709"; // Common default
+    } else if (fileName.contains("av1")) {
+        info.videoCodec = "AV1";
+    } else if (fileName.contains("vp9")) {
+        info.videoCodec = "VP9";
     } else {
         info.videoCodec = "Unknown";
     }
     
+    // Parse bit depth with priority: explicit patterns > codec defaults
+    if (fileName.contains("10bit") || fileName.contains("10-bit") || fileName.contains("_10bit")) {
+        info.bitDepth = "10 bit";
+    } else if (fileName.contains("12bit") || fileName.contains("12-bit")) {
+        info.bitDepth = "12 bit";
+    } else if (fileName.contains("16bit") || fileName.contains("16-bit")) {
+        info.bitDepth = "16 bit";
+    } else if (fileName.contains("8bit") || fileName.contains("8-bit")) {
+        info.bitDepth = "8 bit";
+    } else {
+        // Default based on codec
+        if (info.videoCodec == "H.265" || info.videoCodec == "AV1") {
+            info.bitDepth = "10 bit"; // Modern codecs often 10-bit
+        } else {
+            info.bitDepth = "8 bit"; // Legacy default
+        }
+    }
+    
+    // Parse resolution with multiple pattern matching strategies
+    QRegularExpression resolutionRegex("(\\d{3,4})x(\\d{3,4})");
+    QRegularExpressionMatch resMatch = resolutionRegex.match(fileName);
+    if (resMatch.hasMatch()) {
+        int width = resMatch.captured(1).toInt();
+        int height = resMatch.captured(2).toInt();
+        QString resDescription = getResolutionDescription(width, height);
+        info.resolution = QString("%1x%2 %3").arg(width).arg(height).arg(resDescription);
+    } else {
+        // Try common resolution keywords
+        if (fileName.contains("8k") || fileName.contains("4320")) {
+            info.resolution = "7680x4320 (8K UHD)";
+        } else if (fileName.contains("4k") || fileName.contains("2160") || fileName.contains("uhd")) {
+            info.resolution = "3840x2160 (4K UHD)";
+        } else if (fileName.contains("fhd") || fileName.contains("1080")) {
+            info.resolution = "1920x1080 (FHD)";
+        } else if (fileName.contains("hd") || fileName.contains("720")) {
+            info.resolution = "1280x720 (HD)";
+        } else if (fileName.contains("qhd") || fileName.contains("1440")) {
+            info.resolution = "2560x1440 (QHD)";
+        } else {
+            info.resolution = "Unknown";
+        }
+    }
+    
+    // Parse frame rate with comprehensive pattern matching
+    QRegularExpression fpsRegex("(\\d{2,3}(?:\\.\\d+)?)fps");
+    QRegularExpressionMatch fpsMatch = fpsRegex.match(fileName);
+    if (fpsMatch.hasMatch()) {
+        double fps = fpsMatch.captured(1).toDouble();
+        info.frameRate = QString("%1 fps").arg(fps, 0, 'f', fps == (int)fps ? 0 : 3);
+    } else {
+        // Try specific frame rate patterns
+        if (fileName.contains("23.976") || fileName.contains("23976")) {
+            info.frameRate = "23.976 fps";
+        } else if (fileName.contains("29.97") || fileName.contains("2997")) {
+            info.frameRate = "29.970 fps";
+        } else if (fileName.contains("59.94") || fileName.contains("5994")) {
+            info.frameRate = "59.940 fps";
+        } else if (fileName.contains("120p") || fileName.contains("120fps")) {
+            info.frameRate = "120.000 fps";
+        } else if (fileName.contains("60p") || fileName.contains("60fps")) {
+            info.frameRate = "60.000 fps";
+        } else if (fileName.contains("50p") || fileName.contains("50fps")) {
+            info.frameRate = "50.000 fps";
+        } else if (fileName.contains("30p") || fileName.contains("30fps")) {
+            info.frameRate = "30.000 fps";
+        } else if (fileName.contains("25p") || fileName.contains("25fps")) {
+            info.frameRate = "25.000 fps";
+        } else if (fileName.contains("24p") || fileName.contains("24fps")) {
+            info.frameRate = "24.000 fps";
+        } else {
+            info.frameRate = "Unknown";
+        }
+    }
+    
+    // Parse color space based on resolution and keywords
+    if (fileName.contains("hdr") || fileName.contains("rec2020") || fileName.contains("bt2020")) {
+        info.colorSpace = "Rec. 2020 (HDR)";
+    } else if (fileName.contains("p3") || fileName.contains("dci-p3")) {
+        info.colorSpace = "DCI-P3";
+    } else if (fileName.contains("rec601") || fileName.contains("bt601")) {
+        info.colorSpace = "Rec. 601 (SDTV)";
+    } else {
+        // Infer from resolution
+        if (info.resolution.contains("4K") || info.resolution.contains("8K") || info.resolution.contains("2160")) {
+            info.colorSpace = "Rec. 709 (sRGB)"; // UHD default
+        } else if (info.resolution.contains("1080") || info.resolution.contains("720")) {
+            info.colorSpace = "Rec. 709 (sRGB)"; // HD default
+        } else if (info.resolution.contains("480")) {
+            info.colorSpace = "Rec. 601 (SDTV)"; // SD default
+        } else {
+            info.colorSpace = "Rec. 709 (sRGB)"; // Safe default
+        }
+    }
+    
     return info;
+}
+
+void MediaAnalyzer::parseAndLogFFprobeVersion(const QString &versionOutput)
+{
+    // Parse FFprobe version information from --version output
+    // Example output: "ffprobe version 4.4.2 Copyright (c) 2000-2021 the FFmpeg developers"
+    
+    QStringList lines = versionOutput.split('\n');
+    if (lines.isEmpty()) {
+        // No need to emit signal here as MediaAnalyzer doesn't have logMessage signal
+        qDebug() << "FFprobe found in PATH, but version information unavailable";
+        return;
+    }
+    
+    QString firstLine = lines.first();
+    
+    // Extract version number
+    QRegularExpression versionRegex(R"(ffprobe version ([\d\.\w-]+))");
+    QRegularExpressionMatch versionMatch = versionRegex.match(firstLine);
+    QString version = "Unknown";
+    if (versionMatch.hasMatch()) {
+        version = versionMatch.captured(1);
+    }
+    
+    // Extract copyright year range
+    QRegularExpression yearRegex(R"(Copyright \(c\) (\d{4})-(\d{4}))");
+    QRegularExpressionMatch yearMatch = yearRegex.match(firstLine);
+    QString yearRange = "Unknown";
+    if (yearMatch.hasMatch()) {
+        QString startYear = yearMatch.captured(1);
+        QString endYear = yearMatch.captured(2);
+        yearRange = QString("%1-%2").arg(startYear).arg(endYear);
+    }
+    
+    qDebug() << QString("FFprobe found in PATH - Version: %1, Release Years: %2")
+                .arg(version).arg(yearRange);
 }

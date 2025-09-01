@@ -260,6 +260,9 @@ void MainWindow::startProcessing()
     // Determine conflict handling
     bool overwrite = (ui->conflictCombo->currentText() == "Overwrite");
     
+    // Pass MediaInfo to processor
+    m_processor->setMediaInfos(m_mediaInfos);
+    
     logMessage("Starting batch processing...", LogLevel::Info);
     m_processor->processFiles(m_files, outputFolder, getOutputFormat(), overwrite);
 }

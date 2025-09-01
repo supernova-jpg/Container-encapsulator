@@ -167,13 +167,12 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 {
     QStringList args;
 
-    // For raw streams, we need special handling
+    // For raw streams, we need special handling - parameters must be in correct order
     if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
-        // Add input format detection for raw streams
         QString extension = QFileInfo(inputFile).suffix().toLower();
         QString fileName = QFileInfo(inputFile).fileName().toLower();
         
-        // Detect codec format
+        // 1. First, detect and add input format for raw streams
         if (extension == "bin") {
             // For .bin files, try to detect codec from filename
             if (fileName.contains("hevc") || fileName.contains("h265") || fileName.contains("265")) {
@@ -190,15 +189,9 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
             args << "-f" << "hevc";
         }
         
-        // Check for pixel format hints in filename
-        if (fileName.contains("p010") || fileName.contains("10bit") || fileName.contains("10-bit")) {
-            // For 10-bit content, specify pixel format
-            if (fileName.contains("p010")) {
-                args << "-pix_fmt" << "p010le";
-            }
-        }
-
-        // Add framerate before input file for raw streams
+        // 2. Add framerate (must come before input file for raw streams)
+        // First try mediaInfo, then fallback to filename parsing
+        bool framerateSet = false;
         if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
             QString frameRate = mediaInfo.frameRate;
             frameRate.remove(" fps").remove("fps");
@@ -206,24 +199,53 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
             double fps = frameRate.toDouble(&ok);
 
             if (ok && fps > 0) {
-                args << "-r" << QString::number(fps);
+                args << "-framerate" << QString::number(fps);
+                framerateSet = true;
             }
         }
         
-        // Extract resolution from filename if available
+        if (!framerateSet) {
+            // Try to extract framerate from filename as fallback
+            QRegularExpression fpsRegex("(\\d+)fps");
+            QRegularExpressionMatch fpsMatch = fpsRegex.match(fileName);
+            if (fpsMatch.hasMatch()) {
+                args << "-framerate" << fpsMatch.captured(1);
+            } else {
+                // Default to 30fps if no framerate found
+                args << "-framerate" << "30";
+            }
+        }
+        
+        // 3. Add resolution (must come before input file for raw streams)
         QRegularExpression resolutionRegex("(\\d{3,4})x(\\d{3,4})");
         QRegularExpressionMatch match = resolutionRegex.match(fileName);
         if (match.hasMatch()) {
             QString resolution = match.captured(0);
             args << "-s" << resolution;
         }
+        
+        // 4. Check for pixel format hints in filename (optional)
+        if (fileName.contains("p010") || fileName.contains("10bit") || fileName.contains("10-bit") || fileName.contains("420p10")) {
+            // For 10-bit content, don't specify pixel format - let FFmpeg detect it
+            // This prevents format conversion issues
+        }
     }
 
+    // Add thread limit to prevent crashes with large files
+    args << "-threads" << "4";
+    
+    // For raw streams, add probesize and analyzeduration to help FFmpeg
+    if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
+        args << "-probesize" << "50M";      // Increase probe buffer size
+        args << "-analyzeduration" << "50M"; // Increase analysis duration
+    }
+    
     // Always use genpts for better timestamp handling
     args << "-fflags" << "+genpts";
     
-    // Input file
-    args << "-i" << QDir::toNativeSeparators(inputFile);
+    // Input file - ensure proper path handling for Windows UNC paths
+    QString nativePath = QDir::toNativeSeparators(inputFile);
+    args << "-i" << nativePath;
 
     // Copy video codec
     args << "-c:v" << "copy";

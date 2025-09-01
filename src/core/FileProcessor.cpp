@@ -1,9 +1,11 @@
 #include "FileProcessor.h"
 #include "MuxingTask.h"
+#include "../ui/MainWindow.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QRegularExpression>
 
 FileProcessor::FileProcessor(QObject *parent)
     : QObject(parent)
@@ -22,7 +24,8 @@ FileProcessor::~FileProcessor()
 }
 
 void FileProcessor::processFiles(const QStringList &files, const QString &outputFolder, 
-                               const QString &format, bool overwrite)
+                               const QString &format, const QVector<MediaInfo> &mediaInfos,
+                               bool overwrite)
 {
     if (m_processing) {
         emit logMessage("Already processing files. Stop current operation first.");
@@ -32,6 +35,7 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     m_files = files;
     m_outputFolder = outputFolder;
     m_outputFormat = format;
+    m_mediaInfos = mediaInfos;
     m_overwrite = overwrite;
     m_processing = true;
     m_currentIndex = 0;
@@ -53,7 +57,8 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     }
     
     // Create tasks for all files
-    foreach (const QString &inputFile, m_files) {
+    for (int i = 0; i < m_files.size(); ++i) {
+        const QString &inputFile = m_files[i];
         QFileInfo inputInfo(inputFile);
         QString outputName = inputInfo.completeBaseName() + "_muxed." + m_outputFormat;
         QString outputFile = QDir(m_outputFolder).absoluteFilePath(outputName);
@@ -73,7 +78,10 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
         MuxingTask *task = new MuxingTask(this);
         task->setFiles(inputFile, outputFile);
         
-        QString command = buildFFmpegCommand(inputFile, outputFile, m_outputFormat);
+        // Use MediaInfo if available, otherwise create default
+        MediaInfo mediaInfo = (i < m_mediaInfos.size()) ? m_mediaInfos[i] : MediaInfo();
+        
+        QString command = buildFFmpegCommand(inputFile, outputFile, m_outputFormat, mediaInfo);
         task->setFFmpegCommand(command);
         
         connect(task, &MuxingTask::finished, this, &FileProcessor::onTaskFinished);
@@ -155,15 +163,57 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
     }
 }
 
-QString FileProcessor::buildFFmpegCommand(const QString &inputFile, const QString &outputFile, const QString &format)
+QString FileProcessor::buildFFmpegCommand(const QString &inputFile, const QString &outputFile, 
+                                        const QString &format, const MediaInfo &mediaInfo)
 {
     QStringList args;
     
     // Input file
     args << "-i" << QDir::toNativeSeparators(inputFile);
     
-    // Copy streams (no re-encoding)
-    args << "-c" << "copy";
+    // For raw streams or files without proper metadata, add required parameters
+    if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
+        // Add video codec if available
+        if (!mediaInfo.videoCodec.isEmpty() && mediaInfo.videoCodec != "Unknown") {
+            if (mediaInfo.videoCodec.contains("H.264", Qt::CaseInsensitive)) {
+                args << "-c:v" << "libx264";
+            } else if (mediaInfo.videoCodec.contains("H.265", Qt::CaseInsensitive)) {
+                args << "-c:v" << "libx265";
+            }
+        }
+        
+        // Add resolution if available
+        if (!mediaInfo.resolution.isEmpty() && !mediaInfo.resolution.contains("Unknown")) {
+            QString resolution = mediaInfo.resolution;
+            resolution.remove(QRegularExpression("\\s*\\([^)]*\\)")); // Remove description like "(FHD)"
+            if (resolution.contains("x")) {
+                args << "-s" << resolution.split(" ").first(); // Get just the resolution part
+            }
+        }
+        
+        // Add frame rate if available
+        if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
+            QString frameRate = mediaInfo.frameRate;
+            frameRate.remove(" fps").remove("fps");
+            bool ok;
+            double fps = frameRate.toDouble(&ok);
+            if (ok && fps > 0) {
+                args << "-r" << QString::number(fps);
+            }
+        }
+        
+        // Add pixel format based on bit depth
+        if (!mediaInfo.bitDepth.isEmpty() && !mediaInfo.bitDepth.contains("Unknown")) {
+            if (mediaInfo.bitDepth.contains("10")) {
+                args << "-pix_fmt" << "yuv420p10le";
+            } else if (mediaInfo.bitDepth.contains("8")) {
+                args << "-pix_fmt" << "yuv420p";
+            }
+        }
+    } else {
+        // For analyzed container files, copy streams
+        args << "-c" << "copy";
+    }
     
     // Map all streams
     args << "-map" << "0";

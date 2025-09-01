@@ -9,6 +9,7 @@
 #include <QFileInfo>
 
 class MuxingTask;
+struct MediaInfo;
 
 class FileProcessor : public QObject
 {
@@ -19,7 +20,8 @@ public:
     ~FileProcessor();
 
     void processFiles(const QStringList &files, const QString &outputFolder, 
-                     const QString &format, bool overwrite = false);
+                     const QString &format, const QVector<MediaInfo> &mediaInfos,
+                     bool overwrite = false);
     void stop();
     
     bool isProcessing() const { return m_processing; }
@@ -36,7 +38,8 @@ private slots:
 
 private:
     void startNextTask();
-    QString buildFFmpegCommand(const QString &inputFile, const QString &outputFile, const QString &format);
+    QString buildFFmpegCommand(const QString &inputFile, const QString &outputFile, 
+                              const QString &format, const MediaInfo &mediaInfo);
     QString findFFmpegExecutable();
     
     QQueue<MuxingTask*> m_taskQueue;
@@ -45,6 +48,7 @@ private:
     QStringList m_files;
     QString m_outputFolder;
     QString m_outputFormat;
+    QVector<MediaInfo> m_mediaInfos;
     bool m_overwrite;
     bool m_processing;
     

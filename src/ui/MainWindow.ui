@@ -69,16 +69,6 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="analyzeBtn">
-         <property name="text">
-          <string>Analyze Files</string>
-         </property>
-         <property name="toolTip">
-          <string>Analyze media information for all files</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <spacer name="fileButtonSpacer">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>

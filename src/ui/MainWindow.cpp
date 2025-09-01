@@ -10,8 +10,12 @@
 #include <QHeaderView>
 #include <QComboBox>
 #include <QDateTime>
+#include <QApplication>
 #include <QItemDelegate>
 #include <QTimer>
+#ifdef Q_OS_WIN
+#include <QSettings>
+#endif
 
 // Table column definitions
 enum TableColumn {
@@ -89,7 +93,6 @@ void MainWindow::setupConnections()
     connect(ui->addFolderBtn, &QPushButton::clicked, this, &MainWindow::addFolder);
     connect(ui->removeBtn, &QPushButton::clicked, this, &MainWindow::removeSelected);
     connect(ui->clearBtn, &QPushButton::clicked, this, &MainWindow::clearAll);
-    connect(ui->analyzeBtn, &QPushButton::clicked, this, &MainWindow::analyzeFiles);
     
     // Settings
     connect(ui->browseBtn, &QPushButton::clicked, this, &MainWindow::browseOutputFolder);
@@ -140,7 +143,10 @@ void MainWindow::dropEvent(QDropEvent *event)
                 }
             }
         }
-        addFilesToTable(files);
+        if (!files.isEmpty()) {
+            addFilesToTable(files);
+            analyzeFiles(); // Automatically analyze dropped files
+        }
     }
 }
 
@@ -153,7 +159,10 @@ void MainWindow::addFiles()
         "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.3gp *.ts *.h264 *.h265 *.bin *.264 *.265);;All Files (*)"
     );
     
-    addFilesToTable(files);
+    if (!files.isEmpty()) {
+        addFilesToTable(files);
+        analyzeFiles(); // Automatically analyze added files
+    }
 }
 
 void MainWindow::addFolder()
@@ -171,7 +180,10 @@ void MainWindow::addFolder()
         foreach (const QFileInfo &fileInfo, fileInfos) {
             files << fileInfo.absoluteFilePath();
         }
-        addFilesToTable(files);
+        if (!files.isEmpty()) {
+            addFilesToTable(files);
+            analyzeFiles(); // Automatically analyze added files
+        }
     }
 }
 
@@ -202,7 +214,6 @@ void MainWindow::analyzeFiles()
     }
     
     logMessage("Starting media analysis...", LogLevel::Info);
-    ui->analyzeBtn->setEnabled(false);
     
     for (int i = 0; i < m_files.size(); ++i) {
         m_analyzer->analyzeFile(i, m_files[i]);
@@ -261,7 +272,7 @@ void MainWindow::startProcessing()
     bool overwrite = (ui->conflictCombo->currentText() == "Overwrite");
     
     logMessage("Starting batch processing...", LogLevel::Info);
-    m_processor->processFiles(m_files, outputFolder, getOutputFormat(), overwrite);
+    m_processor->processFiles(m_files, outputFolder, getOutputFormat(), m_mediaInfos, overwrite);
 }
 
 void MainWindow::stopProcessing()
@@ -354,7 +365,6 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
     completedAnalysis++;
     
     if (completedAnalysis >= m_files.size()) {
-        ui->analyzeBtn->setEnabled(true);
         logMessage("Media analysis completed", LogLevel::Info);
         completedAnalysis = 0;
     }
@@ -618,18 +628,31 @@ void MainWindow::logMessage(const QString &message, LogLevel level)
     QString levelStr;
     QString color;
     
+    // Detect Windows theme and adapt colors accordingly
+    bool isDarkTheme = false;
+#ifdef Q_OS_WIN
+    // Check if Windows is in dark mode
+    QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 
+                      QSettings::NativeFormat);
+    isDarkTheme = (settings.value("AppsUseLightTheme", 1).toInt() == 0);
+#endif
+    
+    // Use palette-aware colors as fallback
+    QPalette palette = QApplication::palette();
+    QString defaultTextColor = palette.color(QPalette::WindowText).name();
+    
     switch (level) {
     case LogLevel::Info:
         levelStr = "[INFO]";
-        color = "black";
+        color = isDarkTheme ? "#FFFFFF" : (defaultTextColor.isEmpty() ? "#000000" : defaultTextColor);
         break;
     case LogLevel::Warning:
         levelStr = "[WARN]";
-        color = "orange";
+        color = "#FFA500"; // Orange works in both themes
         break;
     case LogLevel::Error:
         levelStr = "[ERROR]";
-        color = "red";
+        color = "#FF4444"; // Lighter red for better visibility in dark themes
         break;
     }
     

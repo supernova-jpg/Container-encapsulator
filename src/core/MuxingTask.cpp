@@ -31,9 +31,10 @@ void MuxingTask::setFiles(const QString &inputFile, const QString &outputFile)
     m_outputFile = outputFile;
 }
 
-void MuxingTask::setFFmpegCommand(const QString &command)
+void MuxingTask::setCommandAndArgs(const QString &program, const QStringList &args)
 {
-    m_ffmpegCommand = command;
+    m_program = program;
+    m_arguments = args;
 }
 
 void MuxingTask::start()
@@ -46,33 +47,29 @@ void MuxingTask::start()
         connect(m_process, &QProcess::readyReadStandardError, this, &MuxingTask::onProcessReadyRead);
         connect(m_process, &QProcess::readyReadStandardOutput, this, &MuxingTask::onProcessReadyRead);
     }
-    
-    if (m_ffmpegCommand.isEmpty()) {
-        emit finished(false, "No FFmpeg command specified");
+
+    if (m_program.isEmpty()) {
+        emit finished(false, "No FFmpeg program path specified");
         return;
     }
-    
+
     m_accumulatedOutput.clear();
     m_totalDuration = 0;
     m_currentTime = 0;
     m_durationParsed = false;
-    
-    emit logMessage(QString("Starting FFmpeg: %1").arg(m_ffmpegCommand));
-    
+
+
+    emit logMessage(QString("Starting FFmpeg: \"%1\" %2").arg(m_program).arg(m_arguments.join(" ")));
+
     m_elapsedTimer.start();
-    
-    // Use cmd.exe to properly execute the command on Windows
-#ifdef Q_OS_WIN
-    m_process->start("cmd.exe", QStringList() << "/C" << m_ffmpegCommand);
-#else
-    m_process->start("/bin/bash", QStringList() << "-c" << m_ffmpegCommand);
-#endif
-    
+
+    m_process->start(m_program, m_arguments);
+
     if (!m_process->waitForStarted(5000)) {
         emit finished(false, QString("Failed to start FFmpeg: %1").arg(m_process->errorString()));
         return;
     }
-    
+
     m_progressTimer->start();
 }
 

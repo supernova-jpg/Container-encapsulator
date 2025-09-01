@@ -53,7 +53,8 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     }
     
     // Create tasks for all files
-    foreach (const QString &inputFile, m_files) {
+    for (int i = 0; i < m_files.size(); ++i) {
+        const QString &inputFile = m_files[i];
         QFileInfo inputInfo(inputFile);
         QString outputName = inputInfo.completeBaseName() + "_muxed." + m_outputFormat;
         QString outputFile = QDir(m_outputFolder).absoluteFilePath(outputName);
@@ -73,7 +74,13 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
         MuxingTask *task = new MuxingTask(this);
         task->setFiles(inputFile, outputFile);
         
-        QString command = buildFFmpegCommand(inputFile, outputFile, m_outputFormat);
+        QString command;
+        // Check if we have MediaInfo for this file and if it's a raw stream
+        if (i < m_mediaInfos.size() && m_mediaInfos[i].isRawStream) {
+            command = buildFFmpegCommandForRawStream(inputFile, outputFile, m_outputFormat, m_mediaInfos[i]);
+        } else {
+            command = buildFFmpegCommand(inputFile, outputFile, m_outputFormat);
+        }
         task->setFFmpegCommand(command);
         
         connect(task, &MuxingTask::finished, this, &FileProcessor::onTaskFinished);
@@ -190,6 +197,92 @@ QString FileProcessor::buildFFmpegCommand(const QString &inputFile, const QStrin
     
     // Output file
     args << QDir::toNativeSeparators(outputFile);
+    
+    return QString("\"%1\" %2").arg(m_ffmpegPath).arg(args.join(" "));
+}
+
+QString FileProcessor::buildFFmpegCommandForRawStream(const QString &inputFile, const QString &outputFile, 
+                                                      const QString &format, const MediaInfo &info)
+{
+    QStringList args;
+    
+    // Parse video parameters from MediaInfo
+    QString videoCodec = info.videoCodec.toLower();
+    QString resolution = info.resolution;
+    QString frameRate = info.frameRate;
+    QString bitDepth = info.bitDepth;
+    
+    // Extract width and height from resolution
+    int width = 0, height = 0;
+    QRegExp resRegex("(\\d+)x(\\d+)");
+    if (resRegex.indexIn(resolution) != -1) {
+        width = resRegex.cap(1).toInt();
+        height = resRegex.cap(2).toInt();
+    }
+    
+    // Extract numeric frame rate
+    QString fps = "30"; // default
+    QRegExp fpsRegex("([\\d.]+)\\s*fps");
+    if (fpsRegex.indexIn(frameRate) != -1) {
+        fps = fpsRegex.cap(1);
+    }
+    
+    // Determine video format based on codec
+    QString videoFormat = "hevc"; // default
+    
+    if (videoCodec.contains("h.264") || videoCodec.contains("264")) {
+        videoFormat = "h264";
+    } else if (videoCodec.contains("h.265") || videoCodec.contains("hevc") || videoCodec.contains("265")) {
+        videoFormat = "hevc";
+    } else if (videoCodec.contains("av1")) {
+        videoFormat = "av1";
+    } else if (videoCodec.contains("vp9")) {
+        videoFormat = "ivf";
+    }
+    
+    // Build FFmpeg command for raw stream
+    args << "-f" << videoFormat;
+    
+    // Add video size if available
+    if (width > 0 && height > 0) {
+        args << "-video_size" << QString("%1x%2").arg(width).arg(height);
+    } else {
+        // For raw streams, resolution is required
+        emit logMessage("Warning: Resolution not specified for raw stream. Please set resolution in the file table.");
+        // Use a common default
+        args << "-video_size" << "1920x1080";
+    }
+    
+    // Add frame rate
+    args << "-framerate" << fps;
+    
+    // Input file
+    args << "-i" << QDir::toNativeSeparators(inputFile);
+    
+    // Copy video stream without re-encoding
+    args << "-c:v" << "copy";
+    
+    // Overwrite output file if it exists
+    if (m_overwrite) {
+        args << "-y";
+    }
+    
+    // Output format specific settings
+    if (format.toLower() == "mp4") {
+        args << "-f" << "mp4";
+        args << "-movflags" << "faststart";
+    } else if (format.toLower() == "mkv") {
+        args << "-f" << "matroska";
+    } else if (format.toLower() == "mov") {
+        args << "-f" << "mov";
+        args << "-movflags" << "faststart";
+    }
+    
+    // Output file
+    args << QDir::toNativeSeparators(outputFile);
+    
+    // Log the command for debugging
+    emit logMessage(QString("Raw stream command: %1 %2").arg(m_ffmpegPath).arg(args.join(" ")));
     
     return QString("\"%1\" %2").arg(m_ffmpegPath).arg(args.join(" "));
 }

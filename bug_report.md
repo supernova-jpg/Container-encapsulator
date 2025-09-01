@@ -12,7 +12,7 @@
 考虑到现在软件已经有了比较完善的手动选择分辨率、位深、帧率编解码协议等元数据的功能，我希望您能进一步开发出.bin重建为.yuv的功能
 - YUV**必须**遵循如下命名规范：
 并确保转换后的YUV文件名符合以下命名规范：
-(序列代号)_(比特位深)bit_(场景描述名)_(分辨率)_(帧率)fps_420p/yuv420p10le.yuv
+- (序列代号)_(比特位深)bit_(场景描述名)_(分辨率)_(帧率)fps_420p/yuv420p10le.yuv
 示例合法文件名：
-● 05_8bit_IndoorTexture_3840x2160_30fps_420p.yuv
-● A00_10bit_Sanitationer_1920x1080_30fps_yuv420p10le.yuv
+- 05_8bit_IndoorTexture_3840x2160_30fps_420p.yuv
+- A00_10bit_Sanitationer_1920x1080_30fps_yuv420p10le.yuv

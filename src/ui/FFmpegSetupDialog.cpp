@@ -163,14 +163,14 @@ bool FFmpegSetupDialog::checkFFmpegAvailability(QString &ffmpegPath, QString &ff
 #endif
     
     // Test FFmpeg in PATH
-    ffmpegProcess.start(ffmpegProgram, QStringList() << "--version");
+    ffmpegProcess.start(ffmpegProgram, QStringList() << "-version");
     if (!ffmpegProcess.waitForStarted(3000) || !ffmpegProcess.waitForFinished(3000) || ffmpegProcess.exitCode() != 0) {
         errorMessage = "FFmpeg not found in PATH";
         return false;
     }
     
     // Test FFprobe in PATH
-    ffprobeProcess.start(ffprobeProgram, QStringList() << "--version");
+    ffprobeProcess.start(ffprobeProgram, QStringList() << "-version");
     if (!ffprobeProcess.waitForStarted(3000) || !ffprobeProcess.waitForFinished(3000) || ffprobeProcess.exitCode() != 0) {
         errorMessage = "FFprobe not found in PATH";
         return false;

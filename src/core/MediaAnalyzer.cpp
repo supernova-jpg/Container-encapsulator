@@ -292,8 +292,8 @@ QString MediaAnalyzer::findFFprobeExecutable()
     QString program = "ffprobe";
 #endif
     
-    // Check if ffprobe is available in PATH by running --version
-    process.start(program, QStringList() << "--version");
+    // Check if ffprobe is available in PATH by running -version
+    process.start(program, QStringList() << "-version");
     if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
         if (process.exitCode() == 0) {
             // Parse version output to extract version and year (similar to ffmpeg)

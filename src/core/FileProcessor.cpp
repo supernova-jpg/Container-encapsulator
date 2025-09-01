@@ -5,7 +5,6 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QDebug>
-#include <QRegularExpression>
 #include <QProcess>
 
 FileProcessor::FileProcessor(QObject *parent)
@@ -212,9 +211,10 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
         }
         
         // Extract resolution from filename if available
-        QRegExp resolutionRegex("(\\d{3,4})x(\\d{3,4})");
-        if (fileName.contains(resolutionRegex)) {
-            QString resolution = resolutionRegex.cap(0);
+        QRegularExpression resolutionRegex("(\\d{3,4})x(\\d{3,4})");
+        QRegularExpressionMatch match = resolutionRegex.match(fileName);
+        if (match.hasMatch()) {
+            QString resolution = match.captured(0);
             args << "-s" << resolution;
         }
     }

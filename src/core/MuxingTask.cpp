@@ -63,10 +63,18 @@ void MuxingTask::start()
 
     m_elapsedTimer.start();
 
+    // Set working directory to handle relative paths better
+    QFileInfo inputInfo(m_inputFile);
+    if (inputInfo.exists()) {
+        m_process->setWorkingDirectory(inputInfo.absolutePath());
+    }
+    
     m_process->start(m_program, m_arguments);
 
     if (!m_process->waitForStarted(5000)) {
-        emit finished(false, QString("Failed to start FFmpeg: %1").arg(m_process->errorString()));
+        QString errorMsg = QString("Failed to start FFmpeg: %1").arg(m_process->errorString());
+        emit logMessage(QString("[ERROR] %1").arg(errorMsg));
+        emit finished(false, errorMsg);
         return;
     }
 
@@ -114,8 +122,16 @@ void MuxingTask::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
         
         // Include the last few lines of output for debugging
         QStringList outputLines = m_accumulatedOutput.split('\n');
-        if (!outputLines.isEmpty()) {
-            message += "\nLast output: " + outputLines.takeLast().trimmed();
+        QString lastOutput;
+        // Get the last non-empty lines for better debugging
+        for (int i = outputLines.size() - 1; i >= 0 && lastOutput.isEmpty(); i--) {
+            lastOutput = outputLines.at(i).trimmed();
+        }
+        if (!lastOutput.isEmpty()) {
+            message += "\nLast output: " + lastOutput;
+        } else {
+            // If no output at all, this might indicate immediate crash
+            message += "\nLast output: (no output captured - process may have crashed immediately)";
         }
     }
     
@@ -163,13 +179,23 @@ void MuxingTask::onProcessReadyRead()
 {
     if (!m_process) return;
     
-    QByteArray data = m_process->readAllStandardError();
-    data += m_process->readAllStandardOutput();
+    // Read both stderr and stdout
+    QByteArray stderrData = m_process->readAllStandardError();
+    QByteArray stdoutData = m_process->readAllStandardOutput();
     
-    QString output = QString::fromLocal8Bit(data);
-    m_accumulatedOutput += output;
+    // Convert and accumulate output
+    QString stderrOutput = QString::fromLocal8Bit(stderrData);
+    QString stdoutOutput = QString::fromLocal8Bit(stdoutData);
     
-    parseFFmpegOutput(output);
+    if (!stderrOutput.isEmpty()) {
+        m_accumulatedOutput += stderrOutput;
+        parseFFmpegOutput(stderrOutput);
+    }
+    
+    if (!stdoutOutput.isEmpty()) {
+        m_accumulatedOutput += stdoutOutput;
+        parseFFmpegOutput(stdoutOutput);
+    }
 }
 
 void MuxingTask::checkProgress()

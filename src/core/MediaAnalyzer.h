@@ -58,4 +58,4 @@ private:
     AnalysisTask m_currentTask;
 };
 
-#endif // MEDIAANALYZER_H
+#endif

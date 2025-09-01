@@ -78,12 +78,10 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
         
         MuxingTask *task = new MuxingTask(this);
         task->setFiles(inputFile, outputFile);
-        
-        // Use MediaInfo if available, otherwise create default
+
         MediaInfo mediaInfo = (i < m_mediaInfos.size()) ? m_mediaInfos[i] : MediaInfo();
-        
-        QString command = buildFFmpegCommand(inputFile, outputFile, m_outputFormat, mediaInfo);
-        task->setFFmpegCommand(command);
+        QStringList commandArgs = buildFFmpegCommand(inputFile, outputFile, m_outputFormat, mediaInfo);
+        task->setCommandAndArgs(m_ffmpegPath, commandArgs);
         
         connect(task, &MuxingTask::finished, this, &FileProcessor::onTaskFinished);
         connect(task, &MuxingTask::logMessage, this, &FileProcessor::logMessage);
@@ -165,73 +163,57 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
     }
 }
 
-QString FileProcessor::buildFFmpegCommand(const QString &inputFile, const QString &outputFile, 
-                                        const QString &format, const MediaInfo &mediaInfo)
+QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QString &outputFile,
+                                              const QString &format, const MediaInfo &mediaInfo)
 {
     QStringList args;
-    
-    // Input file
-    args << "-i" << QDir::toNativeSeparators(inputFile);
-    
-    // For raw streams, specify input framerate if available
+
+    args << "-fflags" << "+genpts";
     if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
+
         if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
             QString frameRate = mediaInfo.frameRate;
             frameRate.remove(" fps").remove("fps");
             bool ok;
             double fps = frameRate.toDouble(&ok);
+
             if (ok && fps > 0) {
-                // Insert framerate before the input file (it needs to come before -i)
-                args.insert(args.indexOf("-i"), "-framerate");
-                args.insert(args.indexOf("-i"), QString::number(fps));
+                args << "-framerate" << QString::number(fps);
             }
         }
     }
-    
-    // CRITICAL FIX: Always use stream copy mode to avoid re-encoding
-    // This fixes the core FFmpeg processing failures reported in bug_report.md
+
+    args << "-i" << QDir::toNativeSeparators(inputFile);
+
     args << "-c:v" << "copy";
-    
-    
-    // Overwrite output file if it exists
+
     if (m_overwrite) {
         args << "-y";
     }
-    
-    // Output format specific settings
+
     if (format.toLower() == "mp4") {
         args << "-f" << "mp4";
-        args << "-movflags" << "faststart"; // Move metadata to beginning for faster web streaming
+        args << "-movflags" << "faststart";
     } else if (format.toLower() == "mkv") {
         args << "-f" << "matroska";
-    } else if (format.toLower() == "mov") {
-        args << "-f" << "mov";
-        args << "-movflags" << "faststart";
-    } else if (format.toLower() == "webm") {
-        args << "-f" << "webm";
-    } else if (format.toLower() == "ts") {
-        args << "-f" << "mpegts";
     }
-    
-    // Output file
+
+
     args << QDir::toNativeSeparators(outputFile);
-    
-    return QString("\"%1\" %2").arg(m_ffmpegPath).arg(args.join(" "));
+
+    return args;
 }
 
 QString FileProcessor::findFFmpegExecutable()
 {
     QProcess process;
     
-#ifdef Q_OS_WIN
     QString program = "ffmpeg.exe";
-#else
-    QString program = "ffmpeg";
-#endif
+
     
-    // Check if ffmpeg is available in PATH by running --version
-    process.start(program, QStringList() << "--version");
-    if (process.waitForStarted(3000) && process.waitForFinished(3000)) {
+    // Check if ffmpeg is available in PATH by running -version
+    process.start(program, QStringList() << "-version");
+    if (process.waitForStarted(3000) && process.waitForFinished(8000)) {
         if (process.exitCode() == 0) {
             // Parse version output to extract version and year
             QString output = QString::fromUtf8(process.readAllStandardOutput());

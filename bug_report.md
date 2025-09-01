@@ -18,5 +18,6 @@
 09:33:15 [INFO] Removed file from list
 09:33:17 [INFO] Added 1 files to processing list; 
 ```
+你的修改，应当保证只要用户输入了正确的元数据，就一定能生成正确的ffmpeg命令进行封装。
 2. 我在UI界面中要点击“Analyze Files”，程序才会开始尝试解析元数据，这个做法也有些欠妥。正确的做法是点击"Add Files"或者“Add Folder”,程序就应该立刻开始尝试解析分辨率、帧率、位深等元数据，并移除“Analyze Files”图标；
 3. 如果Windows UI界面被设置为黑色背景，那么你Log Output当中显示的颜色应当是白色的，反之亦然。

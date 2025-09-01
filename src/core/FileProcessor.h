@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QStringList>
 #include <QQueue>
+#include <QRegularExpression>
 #include <QFileInfo>
 
 class MuxingTask;

@@ -5,7 +5,6 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QDebug>
-#include <QRegularExpression>
 #include <QProcess>
 
 FileProcessor::FileProcessor(QObject *parent)
@@ -168,9 +167,38 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 {
     QStringList args;
 
-    args << "-fflags" << "+genpts";
+    // For raw streams, we need special handling
     if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
+        // Add input format detection for raw streams
+        QString extension = QFileInfo(inputFile).suffix().toLower();
+        QString fileName = QFileInfo(inputFile).fileName().toLower();
+        
+        // Detect codec format
+        if (extension == "bin") {
+            // For .bin files, try to detect codec from filename
+            if (fileName.contains("hevc") || fileName.contains("h265") || fileName.contains("265")) {
+                args << "-f" << "hevc";
+            } else if (fileName.contains("h264") || fileName.contains("avc") || fileName.contains("264")) {
+                args << "-f" << "h264";
+            } else {
+                // Default to HEVC for unknown .bin files (most common in testing)
+                args << "-f" << "hevc";
+            }
+        } else if (extension == "h264" || extension == "264") {
+            args << "-f" << "h264";
+        } else if (extension == "h265" || extension == "265" || extension == "hevc") {
+            args << "-f" << "hevc";
+        }
+        
+        // Check for pixel format hints in filename
+        if (fileName.contains("p010") || fileName.contains("10bit") || fileName.contains("10-bit")) {
+            // For 10-bit content, specify pixel format
+            if (fileName.contains("p010")) {
+                args << "-pix_fmt" << "p010le";
+            }
+        }
 
+        // Add framerate before input file for raw streams
         if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
             QString frameRate = mediaInfo.frameRate;
             frameRate.remove(" fps").remove("fps");
@@ -178,14 +206,31 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
             double fps = frameRate.toDouble(&ok);
 
             if (ok && fps > 0) {
-                args << "-framerate" << QString::number(fps);
+                args << "-r" << QString::number(fps);
             }
+        }
+        
+        // Extract resolution from filename if available
+        QRegularExpression resolutionRegex("(\\d{3,4})x(\\d{3,4})");
+        QRegularExpressionMatch match = resolutionRegex.match(fileName);
+        if (match.hasMatch()) {
+            QString resolution = match.captured(0);
+            args << "-s" << resolution;
         }
     }
 
+    // Always use genpts for better timestamp handling
+    args << "-fflags" << "+genpts";
+    
+    // Input file
     args << "-i" << QDir::toNativeSeparators(inputFile);
 
+    // Copy video codec
     args << "-c:v" << "copy";
+    
+    // Copy all streams (video, audio, subtitles)
+    args << "-c:a" << "copy";
+    args << "-c:s" << "copy";
 
     if (m_overwrite) {
         args << "-y";
@@ -193,11 +238,10 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 
     if (format.toLower() == "mp4") {
         args << "-f" << "mp4";
-        args << "-movflags" << "faststart";
+        args << "-movflags" << "+faststart";
     } else if (format.toLower() == "mkv") {
         args << "-f" << "matroska";
     }
-
 
     args << QDir::toNativeSeparators(outputFile);
 

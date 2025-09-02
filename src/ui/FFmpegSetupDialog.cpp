@@ -154,24 +154,51 @@ bool FFmpegSetupDialog::checkFFmpegAvailability(QString &ffmpegPath, QString &ff
 {
     QProcess ffmpegProcess, ffprobeProcess;
     
+    // Try different possible names for ffmpeg and ffprobe
+    QStringList ffmpegCandidates, ffprobeCandidates;
 #ifdef Q_OS_WIN
-    QString ffmpegProgram = "ffmpeg.exe";
-    QString ffprobeProgram = "ffprobe.exe";
+    ffmpegCandidates << "ffmpeg" << "ffmpeg.exe";
+    ffprobeCandidates << "ffprobe" << "ffprobe.exe";
 #else
-    QString ffmpegProgram = "ffmpeg";
-    QString ffprobeProgram = "ffprobe";
+    ffmpegCandidates << "ffmpeg";
+    ffprobeCandidates << "ffprobe";
 #endif
     
     // Test FFmpeg in PATH
-    ffmpegProcess.start(ffmpegProgram, QStringList() << "--version");
-    if (!ffmpegProcess.waitForStarted(3000) || !ffmpegProcess.waitForFinished(3000) || ffmpegProcess.exitCode() != 0) {
+    QString ffmpegProgram, ffprobeProgram;
+    bool ffmpegFound = false;
+    
+    for (const QString &candidate : ffmpegCandidates) {
+        ffmpegProcess.start(candidate, QStringList() << "--version");
+        if (ffmpegProcess.waitForStarted(3000) && ffmpegProcess.waitForFinished(3000) && ffmpegProcess.exitCode() == 0) {
+            ffmpegProgram = candidate;
+            ffmpegFound = true;
+            break;
+        }
+        ffmpegProcess.kill();
+        ffmpegProcess.waitForFinished(1000);
+    }
+    
+    if (!ffmpegFound) {
         errorMessage = "FFmpeg not found in PATH";
         return false;
     }
     
     // Test FFprobe in PATH
-    ffprobeProcess.start(ffprobeProgram, QStringList() << "--version");
-    if (!ffprobeProcess.waitForStarted(3000) || !ffprobeProcess.waitForFinished(3000) || ffprobeProcess.exitCode() != 0) {
+    bool ffprobeFound = false;
+    
+    for (const QString &candidate : ffprobeCandidates) {
+        ffprobeProcess.start(candidate, QStringList() << "--version");
+        if (ffprobeProcess.waitForStarted(3000) && ffprobeProcess.waitForFinished(3000) && ffprobeProcess.exitCode() == 0) {
+            ffprobeProgram = candidate;
+            ffprobeFound = true;
+            break;
+        }
+        ffprobeProcess.kill();
+        ffprobeProcess.waitForFinished(1000);
+    }
+    
+    if (!ffprobeFound) {
         errorMessage = "FFprobe not found in PATH";
         return false;
     }
@@ -361,20 +388,24 @@ QString FFmpegSetupDialog::findFFmpegInFolder(const QString &folderPath)
         return QString();
     }
     
+    // Try different possible names for ffmpeg
+    QStringList ffmpegNames;
 #ifdef Q_OS_WIN
-    QString ffmpegName = "ffmpeg.exe";
+    ffmpegNames << "ffmpeg.exe" << "ffmpeg";
 #else
-    QString ffmpegName = "ffmpeg";
+    ffmpegNames << "ffmpeg";
 #endif
     
-    QString directPath = dir.absoluteFilePath(ffmpegName);
-    if (QFile::exists(directPath) && testExecutable(directPath, "ffmpeg")) {
-        return directPath;
-    }
-    
-    QString binPath = dir.absoluteFilePath("bin/" + ffmpegName);
-    if (QFile::exists(binPath) && testExecutable(binPath, "ffmpeg")) {
-        return binPath;
+    for (const QString &ffmpegName : ffmpegNames) {
+        QString directPath = dir.absoluteFilePath(ffmpegName);
+        if (QFile::exists(directPath) && testExecutable(directPath, "ffmpeg")) {
+            return directPath;
+        }
+        
+        QString binPath = dir.absoluteFilePath("bin/" + ffmpegName);
+        if (QFile::exists(binPath) && testExecutable(binPath, "ffmpeg")) {
+            return binPath;
+        }
     }
     
     return QString();

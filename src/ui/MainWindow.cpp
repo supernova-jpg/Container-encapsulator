@@ -927,36 +927,29 @@ void MainWindow::onProcessingModeChanged()
     ui->binToYuvGroup->setVisible(isBinToYuv);
     
     // Show/hide Output Settings controls based on processing mode
+    // In BIN->YUV mode, only show Output folder row (row 0)
+    // Hide Format row (row 1) and Naming row (row 2)
+    
+    // Format controls (row 1)
+    ui->formatLabel->setVisible(!isBinToYuv);
+    ui->formatCombo->setVisible(!isBinToYuv);
+    ui->conflictCombo->setVisible(!isBinToYuv);
+    
+    // Naming controls (row 2)
+    ui->namingLabel->setVisible(!isBinToYuv);
+    ui->prefixEdit->setVisible(!isBinToYuv);
+    ui->suffixEdit->setVisible(!isBinToYuv);
+    
+    // Find and hide/show the naming middle label
+    QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
+    if (namingMiddleLabel) {
+        namingMiddleLabel->setVisible(!isBinToYuv);
+    }
+    
     if (isBinToYuv) {
-        // In BIN->YUV mode, only show Output folder
-        ui->formatLabel->setVisible(false);
-        ui->formatCombo->setVisible(false);
-        ui->conflictCombo->setVisible(false);
-        ui->namingLabel->setVisible(false);
-        ui->prefixEdit->setVisible(false);
-        ui->suffixEdit->setVisible(false);
-        // Find and hide the naming middle label
-        QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
-        if (namingMiddleLabel) {
-            namingMiddleLabel->setVisible(false);
-        }
-        
         onBinToYuvSettingsChanged();
         logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
     } else {
-        // In muxing mode, show all Output Settings controls
-        ui->formatLabel->setVisible(true);
-        ui->formatCombo->setVisible(true);
-        ui->conflictCombo->setVisible(true);
-        ui->namingLabel->setVisible(true);
-        ui->prefixEdit->setVisible(true);
-        ui->suffixEdit->setVisible(true);
-        // Find and show the naming middle label
-        QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
-        if (namingMiddleLabel) {
-            namingMiddleLabel->setVisible(true);
-        }
-        
         logMessage("Switched to muxing processing mode", LogLevel::Info);
     }
 }

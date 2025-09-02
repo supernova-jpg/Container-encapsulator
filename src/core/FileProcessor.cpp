@@ -240,18 +240,24 @@ QString FileProcessor::findFFmpegExecutable()
 {
     QProcess process;
     
-    QString program = "ffmpeg.exe";
-
+    // Try different possible names for ffmpeg
+    QStringList candidates = {"ffmpeg", "ffmpeg.exe"};
     
-    // Check if ffmpeg is available in PATH by running -version
-    process.start(program, QStringList() << "-version");
-    if (process.waitForStarted(3000) && process.waitForFinished(8000)) {
-        if (process.exitCode() == 0) {
-            // Parse version output to extract version and year
-            QString output = QString::fromUtf8(process.readAllStandardOutput());
-            parseAndLogFFmpegVersion(output);
-            return program;
+    for (const QString &program : candidates) {
+        // Check if ffmpeg is available in PATH by running -version
+        process.start(program, QStringList() << "-version");
+        if (process.waitForStarted(3000) && process.waitForFinished(8000)) {
+            if (process.exitCode() == 0) {
+                // Parse version output to extract version and year
+                QString output = QString::fromUtf8(process.readAllStandardOutput());
+                parseAndLogFFmpegVersion(output);
+                return program;
+            }
         }
+        
+        // Reset process for next attempt
+        process.kill();
+        process.waitForFinished(1000);
     }
     
     return QString(); // Not found in PATH

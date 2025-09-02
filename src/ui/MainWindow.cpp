@@ -1027,7 +1027,7 @@ void MainWindow::onProcessingModeChanged()
         ui->compatibilityCheck->setVisible(false);
         
         // Adjust the settings group height for BIN->YUV mode (only one row needed)
-        ui->settingsGroup->setMaximumHeight(60);
+        ui->settingsGroup->setMaximumHeight(87);
         
         // Show BIN->YUV specific settings
         ui->binToYuvGroup->setVisible(true);

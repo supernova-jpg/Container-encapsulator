@@ -1024,6 +1024,15 @@ void MainWindow::onProcessingModeChanged()
         ui->prefixEdit->setVisible(false);
         ui->namingMiddleLabel->setVisible(false);
         ui->suffixEdit->setVisible(false);
+        ui->compatibilityCheck->setVisible(false);
+        
+        // Hide the entire naming layout to prevent spacing issues
+        if (ui->namingLayout) {
+            ui->namingLayout->parentWidget()->setVisible(false);
+        }
+        
+        // Adjust the settings group height for BIN->YUV mode (only one row needed)
+        ui->settingsGroup->setMaximumHeight(60);
         
         // Show BIN->YUV specific settings
         ui->binToYuvGroup->setVisible(true);
@@ -1039,6 +1048,15 @@ void MainWindow::onProcessingModeChanged()
         ui->prefixEdit->setVisible(true);
         ui->namingMiddleLabel->setVisible(true);
         ui->suffixEdit->setVisible(true);
+        ui->compatibilityCheck->setVisible(true);
+        
+        // Show the naming layout
+        if (ui->namingLayout) {
+            ui->namingLayout->parentWidget()->setVisible(true);
+        }
+        
+        // Restore original settings group height
+        ui->settingsGroup->setMaximumHeight(120);
         
         // Hide BIN->YUV specific settings
         ui->binToYuvGroup->setVisible(false);

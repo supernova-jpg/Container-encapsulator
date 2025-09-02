@@ -1044,12 +1044,15 @@ void MainWindow::onProcessingModeChanged()
     // Adjust the Output Settings group box height based on mode
     if (isBinToYuv) {
         // In BIN->YUV mode, reduce height since we only show one row
-        ui->settingsGroup->setMaximumHeight(60);
+        // Need enough height for the group box title, the folder row, and margins
+        ui->settingsGroup->setMaximumHeight(90);
+        ui->settingsGroup->setMinimumHeight(90);
         onBinToYuvSettingsChanged();
         logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
     } else {
         // In muxing mode, restore original height for all controls
         ui->settingsGroup->setMaximumHeight(120);
+        ui->settingsGroup->setMinimumHeight(0); // Reset minimum height
         logMessage("Switched to muxing processing mode", LogLevel::Info);
     }
 }

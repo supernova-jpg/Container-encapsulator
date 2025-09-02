@@ -72,6 +72,19 @@ MainWindow::MainWindow(QWidget *parent)
     ui->fileTable->setColumnWidth(COL_DURATION, 80);
     ui->fileTable->setColumnWidth(COL_FILE_SIZE, 80);
     
+    // Create and add "Apply All" button
+    m_applyAllButton = new QPushButton("Apply All", this);
+    m_applyAllButton->setToolTip("Apply the selected metadata to all files in the list");
+    m_applyAllButton->setEnabled(false);
+    
+    // Insert the button into the file operations layout
+    QHBoxLayout *fileLayout = qobject_cast<QHBoxLayout*>(ui->fileGroup->layout());
+    if (fileLayout) {
+        // Insert before the spacer (which is the last item)
+        int spacerIndex = fileLayout->count() - 1;
+        fileLayout->insertWidget(spacerIndex, m_applyAllButton);
+    }
+    
     setupConnections();
     
     // Initialize processors
@@ -164,6 +177,9 @@ void MainWindow::setupConnections()
     connect(ui->fileTable, &QTableWidget::customContextMenuRequested, this, &MainWindow::showTableContextMenu);
     ui->fileTable->setContextMenuPolicy(Qt::CustomContextMenu);
     
+    // Apply All button
+    connect(m_applyAllButton, &QPushButton::clicked, this, &MainWindow::onApplyAllClicked);
+    
     // Initialize UI state based on current processing mode
     onProcessingModeChanged();
 }
@@ -205,14 +221,23 @@ void MainWindow::dropEvent(QDropEvent *event)
 
 void MainWindow::addFiles()
 {
+    // Get last used directory from settings
+    QSettings settings("VideoProcessor", "ProMuxer");
+    QString lastDir = settings.value("lastAddFilesDir", 
+                                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    
     QStringList files = QFileDialog::getOpenFileNames(
         this,
         "Select Video Files",
-        QString(),
+        lastDir,
         "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.3gp *.ts *.h264 *.h265 *.bin *.264 *.265);;All Files (*)"
     );
     
     if (!files.isEmpty()) {
+        // Save the directory of the first selected file
+        QFileInfo firstFile(files.first());
+        settings.setValue("lastAddFilesDir", firstFile.absolutePath());
+        
         addFilesToTable(files);
         analyzeFiles(); // Automatically analyze added files
     }
@@ -220,8 +245,16 @@ void MainWindow::addFiles()
 
 void MainWindow::addFolder()
 {
-    QString folder = QFileDialog::getExistingDirectory(this, "Select Folder");
+    // Get last used directory from settings
+    QSettings settings("VideoProcessor", "ProMuxer");
+    QString lastDir = settings.value("lastAddFolderDir", 
+                                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    
+    QString folder = QFileDialog::getExistingDirectory(this, "Select Folder", lastDir);
     if (!folder.isEmpty()) {
+        // Save the selected folder
+        settings.setValue("lastAddFolderDir", folder);
+        
         QDir dir(folder);
         QStringList filters;
         filters << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.wmv" 
@@ -248,6 +281,9 @@ void MainWindow::removeSelected()
         m_mediaInfos.removeAt(row);
         ui->fileTable->removeRow(row);
         logMessage(QString("Removed file from list"), LogLevel::Info);
+        
+        // Update Apply All button state
+        m_applyAllButton->setEnabled(ui->fileTable->rowCount() > 1);
     }
 }
 
@@ -257,6 +293,9 @@ void MainWindow::clearAll()
     m_mediaInfos.clear();
     ui->fileTable->setRowCount(0);
     logMessage("Cleared all files from list", LogLevel::Info);
+    
+    // Disable Apply All button when no files
+    m_applyAllButton->setEnabled(false);
 }
 
 void MainWindow::analyzeFiles()
@@ -276,7 +315,12 @@ void MainWindow::analyzeFiles()
 
 void MainWindow::browseOutputFolder()
 {
-    QString folder = QFileDialog::getExistingDirectory(this, "Select Output Folder");
+    QString currentFolder = ui->outputFolderEdit->text();
+    if (currentFolder.isEmpty()) {
+        currentFolder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    
+    QString folder = QFileDialog::getExistingDirectory(this, "Select Output Folder", currentFolder);
     if (!folder.isEmpty()) {
         ui->outputFolderEdit->setText(folder);
         updateFileTable(); // Update output names
@@ -589,9 +633,42 @@ void MainWindow::onMediaAnalysisError(int index, const QString &error)
 
 void MainWindow::onTableCellChanged(int row, int column)
 {
-    Q_UNUSED(row)
-    Q_UNUSED(column)
-    // Handle table cell changes if needed
+    if (m_analyzer && m_analyzer->isAnalyzing()) {
+        return;
+    }
+    
+    if (row < 0 || row >= m_mediaInfos.size()) {
+        return;
+    }
+    
+    QTableWidgetItem *item = ui->fileTable->item(row, column);
+    if (!item) {
+        return;
+    }
+    
+    MediaInfo &info = m_mediaInfos[row];
+    
+    switch (column) {
+        case COL_VIDEO_CODEC:
+            info.videoCodec = item->text();
+            showCompatibilityWarning(info.videoCodec, getOutputFormat());
+            break;
+        case COL_RESOLUTION:
+            info.resolution = item->text();
+            break;
+        case COL_FRAME_RATE:
+            info.frameRate = item->text();
+            break;
+        case COL_BIT_DEPTH:
+            info.bitDepth = item->text();
+            break;
+        case COL_COLOR_SPACE:
+            info.colorSpace = item->text();
+            break;
+    }
+    
+    // Enable Apply All button when table has files
+    m_applyAllButton->setEnabled(ui->fileTable->rowCount() > 1);
 }
 
 void MainWindow::onTableItemDoubleClicked(int row, int column)
@@ -754,6 +831,9 @@ void MainWindow::updateFileTable()
             ui->fileTable->setItem(i, COL_OUTPUT_NAME, new QTableWidgetItem(outputName));
         }
     }
+    
+    // Enable Apply All button when we have more than one file
+    m_applyAllButton->setEnabled(ui->fileTable->rowCount() > 1);
 }
 
 void MainWindow::setupEditableCell(int row, int column, const QString &currentValue, const QStringList &options)
@@ -950,7 +1030,7 @@ void MainWindow::onProcessingModeChanged()
     ui->formatCombo->setVisible(!isBinToYuv);
     ui->conflictCombo->setVisible(!isBinToYuv);
     
-    // Naming controls (row 2)
+    // Naming controls (row 2) - including the entire naming layout
     ui->namingLabel->setVisible(!isBinToYuv);
     ui->prefixEdit->setVisible(!isBinToYuv);
     ui->suffixEdit->setVisible(!isBinToYuv);
@@ -961,10 +1041,15 @@ void MainWindow::onProcessingModeChanged()
         namingMiddleLabel->setVisible(!isBinToYuv);
     }
     
+    // Adjust the Output Settings group box height based on mode
     if (isBinToYuv) {
+        // In BIN->YUV mode, reduce height since we only show one row
+        ui->settingsGroup->setMaximumHeight(60);
         onBinToYuvSettingsChanged();
         logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
     } else {
+        // In muxing mode, restore original height for all controls
+        ui->settingsGroup->setMaximumHeight(120);
         logMessage("Switched to muxing processing mode", LogLevel::Info);
     }
 }
@@ -1207,4 +1292,58 @@ void MainWindow::saveSettings()
     settings.setValue("logFilters/info", ui->infoCheck->isChecked());
     settings.setValue("logFilters/warning", ui->warningCheck->isChecked());
     settings.setValue("logFilters/error", ui->errorCheck->isChecked());
+}
+
+void MainWindow::onApplyAllClicked()
+{
+    // Get the currently selected row
+    QList<QTableWidgetItem*> selectedItems = ui->fileTable->selectedItems();
+    if (selectedItems.isEmpty()) {
+        QMessageBox::information(this, "Apply All", 
+                               "Please select a file whose metadata you want to apply to all other files.");
+        return;
+    }
+    
+    int sourceRow = selectedItems.first()->row();
+    if (sourceRow < 0 || sourceRow >= m_mediaInfos.size()) {
+        return;
+    }
+    
+    const MediaInfo &sourceInfo = m_mediaInfos[sourceRow];
+    
+    // Confirm action
+    int reply = QMessageBox::question(this, "Apply All", 
+                                    QString("Apply metadata from '%1' to all %2 files?")
+                                    .arg(ui->fileTable->item(sourceRow, COL_FILENAME)->text())
+                                    .arg(ui->fileTable->rowCount()),
+                                    QMessageBox::Yes | QMessageBox::No);
+    
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+    
+    // Apply to all files
+    for (int row = 0; row < ui->fileTable->rowCount(); ++row) {
+        if (row == sourceRow) continue; // Skip source row
+        
+        // Update MediaInfo
+        if (row < m_mediaInfos.size()) {
+            MediaInfo &targetInfo = m_mediaInfos[row];
+            targetInfo.videoCodec = sourceInfo.videoCodec;
+            targetInfo.resolution = sourceInfo.resolution;
+            targetInfo.frameRate = sourceInfo.frameRate;
+            targetInfo.bitDepth = sourceInfo.bitDepth;
+            targetInfo.colorSpace = sourceInfo.colorSpace;
+            
+            // Update table
+            ui->fileTable->item(row, COL_VIDEO_CODEC)->setText(sourceInfo.videoCodec);
+            ui->fileTable->item(row, COL_RESOLUTION)->setText(sourceInfo.resolution);
+            ui->fileTable->item(row, COL_FRAME_RATE)->setText(sourceInfo.frameRate);
+            ui->fileTable->item(row, COL_BIT_DEPTH)->setText(sourceInfo.bitDepth);
+            ui->fileTable->item(row, COL_COLOR_SPACE)->setText(sourceInfo.colorSpace);
+        }
+    }
+    
+    logMessage(QString("Applied metadata from '%1' to all files")
+              .arg(ui->fileTable->item(sourceRow, COL_FILENAME)->text()), LogLevel::Info);
 }

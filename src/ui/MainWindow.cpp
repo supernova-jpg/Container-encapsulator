@@ -880,20 +880,35 @@ void MainWindow::checkFFmpegEnvironment()
             QTimer::singleShot(100, this, &MainWindow::checkFFmpegEnvironment);
         }
     } else {
-        // Get FFmpeg version
-        QProcess process;
-        process.start(ffprobePath, QStringList() << "-version");
-        process.waitForFinished(3000);
+        // Get both FFmpeg and FFprobe versions for comprehensive logging
+        QProcess ffmpegProcess, ffprobeProcess;
         
-        QString version = "Unknown";
-        if (process.exitCode() == 0) {
-            QString output = process.readAllStandardOutput();
-            version = extractVersionInfo(output);
+        // Check FFmpeg version
+        ffmpegProcess.start(ffmpegPath, QStringList() << "-version");
+        ffmpegProcess.waitForFinished(3000);
+        
+        QString ffmpegVersion = "Unknown";
+        if (ffmpegProcess.exitCode() == 0) {
+            QString output = ffmpegProcess.readAllStandardOutput();
+            ffmpegVersion = extractVersionInfo(output);
+            logMessage(QString("FFmpeg found in PATH - Version: %1").arg(ffmpegVersion), LogLevel::Info);
         }
         
-        m_ffmpegStatusLabel->setText(QString("FFprobe found in PATH - Version: %1").arg(version));
+        // Check FFprobe version
+        ffprobeProcess.start(ffprobePath, QStringList() << "-version");
+        ffprobeProcess.waitForFinished(3000);
+        
+        QString ffprobeVersion = "Unknown";
+        if (ffprobeProcess.exitCode() == 0) {
+            QString output = ffprobeProcess.readAllStandardOutput();
+            ffprobeVersion = extractVersionInfo(output);
+            logMessage(QString("FFprobe found in PATH - Version: %1").arg(ffprobeVersion), LogLevel::Info);
+        }
+        
+        // Update status label with both versions
+        m_ffmpegStatusLabel->setText(QString("FFmpeg: %1 | FFprobe: %2").arg(ffmpegVersion).arg(ffprobeVersion));
         m_ffmpegStatusLabel->setStyleSheet("QLabel { color: green; padding: 2px 8px; }");
-        logMessage(QString("FFmpeg environment is ready - Version: %1").arg(version), LogLevel::Info);
+        logMessage(QString("FFmpeg environment is ready - FFmpeg: %1, FFprobe: %2").arg(ffmpegVersion).arg(ffprobeVersion), LogLevel::Info);
     }
 }
 

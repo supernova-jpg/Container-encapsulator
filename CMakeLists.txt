@@ -35,7 +35,11 @@ qt6_add_resources(ProMuxer "resources" PREFIX "/" FILES)
 # Process UI files
 qt6_add_resources(ProMuxer "ui_resources" PREFIX "/" FILES ${UI_FILES})
 
-target_link_libraries(ProMuxer Qt6::Core Qt6::Widgets)
+target_link_libraries(ProMuxer 
+    PRIVATE 
+    Qt6::Core 
+    Qt6::Widgets
+)
 
 # Windows specific settings
 if(WIN32)

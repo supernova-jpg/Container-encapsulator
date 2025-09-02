@@ -147,17 +147,17 @@ void FileProcessor::stop()
     if (!m_processing) {
         return;
     }
-    
+
     emit logMessage("Stopping processing...");
-    
+
     if (m_currentTask) {
         m_currentTask->stop();
         m_currentTask = nullptr;
     }
-    
+
     qDeleteAll(m_taskQueue);
     m_taskQueue.clear();
-    
+
     m_processing = false;
     emit finished();
 }
@@ -170,16 +170,16 @@ void FileProcessor::processNextFile()
         emit finished();
         return;
     }
-    
+
     m_currentTask = m_taskQueue.dequeue();
-    
+
     emit logMessage(QString("Processing file %1/%2: %3")
-                   .arg(m_currentIndex + 1)
-                   .arg(m_totalFiles)
-                   .arg(QFileInfo(m_currentTask->getInputFile()).fileName()));
-    
+                        .arg(m_currentIndex + 1)
+                        .arg(m_totalFiles)
+                        .arg(QFileInfo(m_currentTask->getInputFile()).fileName()));
+
     emit progress(m_currentIndex, m_totalFiles, m_currentTask->getInputFile());
-    
+
     m_currentTask->start();
 }
 
@@ -188,25 +188,25 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
     if (!m_currentTask) {
         return;
     }
-    
+
     QString inputFile = m_currentTask->getInputFile();
     QString outputFile = m_currentTask->getOutputFile();
-    
+
     if (success) {
         emit logMessage(QString("✓ Successfully processed: %1 -> %2")
-                       .arg(QFileInfo(inputFile).fileName())
-                       .arg(QFileInfo(outputFile).fileName()));
+                            .arg(QFileInfo(inputFile).fileName())
+                            .arg(QFileInfo(outputFile).fileName()));
     } else {
         // This is a critical error that should be logged as ERROR level
         emit logMessage(QString("[ERROR] ✗ Failed to process: %1 - %2")
-                       .arg(QFileInfo(inputFile).fileName())
-                       .arg(message));
+                            .arg(QFileInfo(inputFile).fileName())
+                            .arg(message));
     }
-    
+
     m_currentTask->deleteLater();
     m_currentTask = nullptr;
     m_currentIndex++;
-    
+
     if (m_processing) {
         processNextFile();
     }
@@ -218,22 +218,12 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
     QStringList args;
 
     args << "-fflags" << "+genpts";
-    if (mediaInfo.isRawStream || !mediaInfo.analyzed) {
-
-        if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
-            QString frameRate = mediaInfo.frameRate;
-            frameRate.remove(" fps").remove("fps");
-            bool ok;
-            double fps = frameRate.toDouble(&ok);
-
-            if (ok && fps > 0) {
-                args << "-framerate" << QString::number(fps);
-            }
-        }
-    }
-
+    QString frameRate = mediaInfo.frameRate;
+    frameRate.remove(" fps").remove("fps");
+    bool ok;
+    double fps = frameRate.toDouble(&ok);
+    args << "-framerate" << QString::number(fps);
     args << "-i" << QDir::toNativeSeparators(inputFile);
-
     args << "-c:v" << "copy";
 
     if (m_overwrite) {
@@ -256,7 +246,7 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 QString FileProcessor::findFFmpegExecutable()
 {
     QProcess process;
-    
+
     // Try different possible names for ffmpeg
     QStringList candidates;
 #ifdef Q_OS_WIN
@@ -264,7 +254,7 @@ QString FileProcessor::findFFmpegExecutable()
 #else
     candidates << "ffmpeg";
 #endif
-    
+
     for (const QString &program : candidates) {
         // Check if ffmpeg is available in PATH by running -version
         process.start(program, QStringList() << "-version");
@@ -278,12 +268,12 @@ QString FileProcessor::findFFmpegExecutable()
                 }
             }
         }
-        
+
         // Reset process for next attempt
         process.kill();
         process.waitForFinished(1000);
     }
-    
+
     return QString(); // Not found in PATH
 }
 
@@ -291,15 +281,15 @@ void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
 {
     // Parse FFmpeg version information from -version output
     // Example output: "ffmpeg version 4.4.2 Copyright (c) 2000-2021 the FFmpeg developers"
-    
+
     QStringList lines = versionOutput.split('\n');
     if (lines.isEmpty()) {
         emit logMessage("FFmpeg found in PATH, but version information unavailable");
         return;
     }
-    
+
     QString firstLine = lines.first();
-    
+
     // Extract version number
     QRegularExpression versionRegex(R"(ffmpeg version ([\d\.\w-]+))");
     QRegularExpressionMatch versionMatch = versionRegex.match(firstLine);
@@ -307,7 +297,7 @@ void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
     if (versionMatch.hasMatch()) {
         version = versionMatch.captured(1);
     }
-    
+
     // Extract copyright year range
     QRegularExpression yearRegex(R"(Copyright \(c\) (\d{4})-(\d{4}))");
     QRegularExpressionMatch yearMatch = yearRegex.match(firstLine);
@@ -317,13 +307,13 @@ void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
         QString endYear = yearMatch.captured(2);
         yearRange = QString("%1-%2").arg(startYear).arg(endYear);
     }
-    
+
     emit logMessage(QString("FFmpeg found in PATH - Version: %1, Release Years: %2")
-                   .arg(version).arg(yearRange));
+                        .arg(version).arg(yearRange));
 }
 
 QStringList FileProcessor::buildBinToYuvCommand(const QString &inputFile, const QString &outputFile,
-                                               const MediaInfo &mediaInfo)
+                                                const MediaInfo &mediaInfo)
 {
     QStringList args;
     

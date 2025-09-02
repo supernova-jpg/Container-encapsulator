@@ -155,7 +155,7 @@ private:
     QLabel *m_ffmpegStatusLabel;
     
     // UI widgets
-    QPushButton *m_applyAllButton;
+    QPushButton *m_applyAllButton; // Now references ui->applyAllBtn
 };
 
 // Custom combo box delegate for raw stream codec selection

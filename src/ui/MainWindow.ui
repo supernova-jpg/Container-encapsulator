@@ -69,6 +69,19 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="applyAllBtn">
+         <property name="text">
+          <string>Apply All</string>
+         </property>
+         <property name="toolTip">
+          <string>Apply the selected file's settings to all files in the list</string>
+         </property>
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="fileButtonSpacer">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>

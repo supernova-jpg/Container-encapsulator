@@ -288,13 +288,19 @@
          </property>
         </widget>
        </item>
-       <!-- BIN to YUV specific settings (no GroupBox title as requested) -->
-       <item row="3" column="0" colspan="3">
-        <widget class="QWidget" name="binToYuvGroup">
-         <property name="visible">
-          <bool>false</bool>
-         </property>
-         <layout class="QGridLayout" name="binToYuvLayout">
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <!-- BIN to YUV Settings Group -->
+     <widget class="QGroupBox" name="binToYuvGroup">
+      <property name="title">
+       <string>BIN to YUV Settings</string>
+      </property>
+      <property name="visible">
+       <bool>false</bool>
+      </property>
+      <layout class="QGridLayout" name="binToYuvLayout">
           <item row="0" column="0">
            <widget class="QLabel" name="sequenceLabel">
             <property name="text">
@@ -449,9 +455,6 @@
            </widget>
           </item>
          </layout>
-        </widget>
-       </item>
-      </layout>
      </widget>
     </item>
     <item>

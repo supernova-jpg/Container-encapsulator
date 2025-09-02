@@ -53,6 +53,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // Set initial processing mode
     ui->muxingModeRadio->setChecked(true);
+    ui->settingsGroup->setVisible(true);
     ui->binToYuvGroup->setVisible(false);
     
     // Set initial output folder
@@ -1019,40 +1020,15 @@ QStringList CodecComboDelegate::getAudioCodecs()
 void MainWindow::onProcessingModeChanged()
 {
     bool isBinToYuv = ui->binToYuvModeRadio->isChecked();
-    ui->binToYuvGroup->setVisible(isBinToYuv);
     
-    // Show/hide Output Settings controls based on processing mode
-    // In BIN->YUV mode, only show Output folder row (row 0)
-    // Hide Format row (row 1) and Naming row (row 2)
+    // Simply show/hide the appropriate group boxes
+    ui->settingsGroup->setVisible(!isBinToYuv);  // Muxing mode settings
+    ui->binToYuvGroup->setVisible(isBinToYuv);   // BIN->YUV mode settings
     
-    // Format controls (row 1)
-    ui->formatLabel->setVisible(!isBinToYuv);
-    ui->formatCombo->setVisible(!isBinToYuv);
-    ui->conflictCombo->setVisible(!isBinToYuv);
-    
-    // Naming controls (row 2) - including the entire naming layout
-    ui->namingLabel->setVisible(!isBinToYuv);
-    ui->prefixEdit->setVisible(!isBinToYuv);
-    ui->suffixEdit->setVisible(!isBinToYuv);
-    
-    // Find and hide/show the naming middle label
-    QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
-    if (namingMiddleLabel) {
-        namingMiddleLabel->setVisible(!isBinToYuv);
-    }
-    
-    // Adjust the Output Settings group box height based on mode
     if (isBinToYuv) {
-        // In BIN->YUV mode, reduce height since we only show one row
-        // Need enough height for the group box title, the folder row, and margins
-        ui->settingsGroup->setMaximumHeight(90);
-        ui->settingsGroup->setMinimumHeight(90);
         onBinToYuvSettingsChanged();
         logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
     } else {
-        // In muxing mode, restore original height for all controls
-        ui->settingsGroup->setMaximumHeight(120);
-        ui->settingsGroup->setMinimumHeight(0); // Reset minimum height
         logMessage("Switched to muxing processing mode", LogLevel::Info);
     }
 }
@@ -1236,6 +1212,7 @@ void MainWindow::loadSettings()
     bool isBinToYuv = settings.value("processingMode", "muxing").toString() == "binToYuv";
     ui->muxingModeRadio->setChecked(!isBinToYuv);
     ui->binToYuvModeRadio->setChecked(isBinToYuv);
+    ui->settingsGroup->setVisible(!isBinToYuv);
     ui->binToYuvGroup->setVisible(isBinToYuv);
     
     // Load BIN→YUV settings

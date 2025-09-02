@@ -17,6 +17,7 @@
 #include <QStatusBar>
 #include <QMenu>
 #include <QAction>
+#include <QPushButton>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -101,6 +102,9 @@ private slots:
     void removeFileAtRow(int row);
     void analyzeFileAtRow(int row);
     
+    // Apply All button
+    void onApplyAllClicked();
+    
     // Environment setup
     void checkFFmpegEnvironment();
     void onFFmpegStatusClicked();
@@ -149,6 +153,9 @@ private:
     
     // Status bar widgets
     QLabel *m_ffmpegStatusLabel;
+    
+    // UI widgets
+    QPushButton *m_applyAllButton; // Now references ui->applyAllBtn
 };
 
 // Custom combo box delegate for raw stream codec selection

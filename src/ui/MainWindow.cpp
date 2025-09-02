@@ -53,6 +53,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // Set initial processing mode
     ui->muxingModeRadio->setChecked(true);
+    ui->settingsGroup->setVisible(true);
     ui->binToYuvGroup->setVisible(false);
     
     // Set initial output folder
@@ -71,6 +72,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->fileTable->setColumnWidth(COL_COLOR_SPACE, 100);
     ui->fileTable->setColumnWidth(COL_DURATION, 80);
     ui->fileTable->setColumnWidth(COL_FILE_SIZE, 80);
+    
+    // Apply All button is now in the UI file
+    m_applyAllButton = ui->applyAllBtn;
     
     setupConnections();
     
@@ -164,6 +168,9 @@ void MainWindow::setupConnections()
     connect(ui->fileTable, &QTableWidget::customContextMenuRequested, this, &MainWindow::showTableContextMenu);
     ui->fileTable->setContextMenuPolicy(Qt::CustomContextMenu);
     
+    // Apply All button
+    connect(ui->applyAllBtn, &QPushButton::clicked, this, &MainWindow::onApplyAllClicked);
+    
     // Initialize UI state based on current processing mode
     onProcessingModeChanged();
 }
@@ -205,14 +212,23 @@ void MainWindow::dropEvent(QDropEvent *event)
 
 void MainWindow::addFiles()
 {
+    // Get last used directory from settings
+    QSettings settings("VideoProcessor", "ProMuxer");
+    QString lastDir = settings.value("lastAddFilesDir", 
+                                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    
     QStringList files = QFileDialog::getOpenFileNames(
         this,
         "Select Video Files",
-        QString(),
+        lastDir,
         "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.3gp *.ts *.h264 *.h265 *.bin *.264 *.265);;All Files (*)"
     );
     
     if (!files.isEmpty()) {
+        // Save the directory of the first selected file
+        QFileInfo firstFile(files.first());
+        settings.setValue("lastAddFilesDir", firstFile.absolutePath());
+        
         addFilesToTable(files);
         analyzeFiles(); // Automatically analyze added files
     }
@@ -220,8 +236,16 @@ void MainWindow::addFiles()
 
 void MainWindow::addFolder()
 {
-    QString folder = QFileDialog::getExistingDirectory(this, "Select Folder");
+    // Get last used directory from settings
+    QSettings settings("VideoProcessor", "ProMuxer");
+    QString lastDir = settings.value("lastAddFolderDir", 
+                                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
+    
+    QString folder = QFileDialog::getExistingDirectory(this, "Select Folder", lastDir);
     if (!folder.isEmpty()) {
+        // Save the selected folder
+        settings.setValue("lastAddFolderDir", folder);
+        
         QDir dir(folder);
         QStringList filters;
         filters << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.wmv" 
@@ -248,6 +272,9 @@ void MainWindow::removeSelected()
         m_mediaInfos.removeAt(row);
         ui->fileTable->removeRow(row);
         logMessage(QString("Removed file from list"), LogLevel::Info);
+        
+        // Update Apply All button state
+        ui->applyAllBtn->setEnabled(ui->fileTable->rowCount() > 1);
     }
 }
 
@@ -257,6 +284,9 @@ void MainWindow::clearAll()
     m_mediaInfos.clear();
     ui->fileTable->setRowCount(0);
     logMessage("Cleared all files from list", LogLevel::Info);
+    
+    // Disable Apply All button when no files
+    ui->applyAllBtn->setEnabled(false);
 }
 
 void MainWindow::analyzeFiles()
@@ -276,7 +306,12 @@ void MainWindow::analyzeFiles()
 
 void MainWindow::browseOutputFolder()
 {
-    QString folder = QFileDialog::getExistingDirectory(this, "Select Output Folder");
+    QString currentFolder = ui->outputFolderEdit->text();
+    if (currentFolder.isEmpty()) {
+        currentFolder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    
+    QString folder = QFileDialog::getExistingDirectory(this, "Select Output Folder", currentFolder);
     if (!folder.isEmpty()) {
         ui->outputFolderEdit->setText(folder);
         updateFileTable(); // Update output names
@@ -589,9 +624,42 @@ void MainWindow::onMediaAnalysisError(int index, const QString &error)
 
 void MainWindow::onTableCellChanged(int row, int column)
 {
-    Q_UNUSED(row)
-    Q_UNUSED(column)
-    // Handle table cell changes if needed
+    if (m_analyzer && m_analyzer->isAnalyzing()) {
+        return;
+    }
+    
+    if (row < 0 || row >= m_mediaInfos.size()) {
+        return;
+    }
+    
+    QTableWidgetItem *item = ui->fileTable->item(row, column);
+    if (!item) {
+        return;
+    }
+    
+    MediaInfo &info = m_mediaInfos[row];
+    
+    switch (column) {
+        case COL_VIDEO_CODEC:
+            info.videoCodec = item->text();
+            showCompatibilityWarning(info.videoCodec, getOutputFormat());
+            break;
+        case COL_RESOLUTION:
+            info.resolution = item->text();
+            break;
+        case COL_FRAME_RATE:
+            info.frameRate = item->text();
+            break;
+        case COL_BIT_DEPTH:
+            info.bitDepth = item->text();
+            break;
+        case COL_COLOR_SPACE:
+            info.colorSpace = item->text();
+            break;
+    }
+    
+    // Enable Apply All button when table has files
+    ui->applyAllBtn->setEnabled(ui->fileTable->rowCount() > 1);
 }
 
 void MainWindow::onTableItemDoubleClicked(int row, int column)
@@ -754,6 +822,9 @@ void MainWindow::updateFileTable()
             ui->fileTable->setItem(i, COL_OUTPUT_NAME, new QTableWidgetItem(outputName));
         }
     }
+    
+    // Enable Apply All button when we have more than one file
+    ui->applyAllBtn->setEnabled(ui->fileTable->rowCount() > 1);
 }
 
 void MainWindow::setupEditableCell(int row, int column, const QString &currentValue, const QStringList &options)
@@ -939,32 +1010,47 @@ QStringList CodecComboDelegate::getAudioCodecs()
 void MainWindow::onProcessingModeChanged()
 {
     bool isBinToYuv = ui->binToYuvModeRadio->isChecked();
-    ui->binToYuvGroup->setVisible(isBinToYuv);
     
-    // Show/hide Output Settings controls based on processing mode
-    // In BIN->YUV mode, only show Output folder row (row 0)
-    // Hide Format row (row 1) and Naming row (row 2)
+    // Always keep the settings group visible
+    ui->settingsGroup->setVisible(true);
     
-    // Format controls (row 1)
-    ui->formatLabel->setVisible(!isBinToYuv);
-    ui->formatCombo->setVisible(!isBinToYuv);
-    ui->conflictCombo->setVisible(!isBinToYuv);
-    
-    // Naming controls (row 2)
-    ui->namingLabel->setVisible(!isBinToYuv);
-    ui->prefixEdit->setVisible(!isBinToYuv);
-    ui->suffixEdit->setVisible(!isBinToYuv);
-    
-    // Find and hide/show the naming middle label
-    QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
-    if (namingMiddleLabel) {
-        namingMiddleLabel->setVisible(!isBinToYuv);
-    }
-    
+    // Show/hide individual elements based on processing mode
     if (isBinToYuv) {
+        // In BIN->YUV mode, only show output folder settings
+        ui->formatLabel->setVisible(false);
+        ui->formatCombo->setVisible(false);
+        ui->conflictCombo->setVisible(false);
+        ui->namingLabel->setVisible(false);
+        ui->prefixEdit->setVisible(false);
+        ui->namingMiddleLabel->setVisible(false);
+        ui->suffixEdit->setVisible(false);
+        ui->compatibilityCheck->setVisible(false);
+        
+        // Adjust the settings group height for BIN->YUV mode (only one row needed)
+        ui->settingsGroup->setMaximumHeight(60);
+        
+        // Show BIN->YUV specific settings
+        ui->binToYuvGroup->setVisible(true);
+        
         onBinToYuvSettingsChanged();
         logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
     } else {
+        // In muxing mode, show all output settings
+        ui->formatLabel->setVisible(true);
+        ui->formatCombo->setVisible(true);
+        ui->conflictCombo->setVisible(true);
+        ui->namingLabel->setVisible(true);
+        ui->prefixEdit->setVisible(true);
+        ui->namingMiddleLabel->setVisible(true);
+        ui->suffixEdit->setVisible(true);
+        ui->compatibilityCheck->setVisible(true);
+        
+        // Restore original settings group height
+        ui->settingsGroup->setMaximumHeight(120);
+        
+        // Hide BIN->YUV specific settings
+        ui->binToYuvGroup->setVisible(false);
+        
         logMessage("Switched to muxing processing mode", LogLevel::Info);
     }
 }
@@ -1148,6 +1234,8 @@ void MainWindow::loadSettings()
     bool isBinToYuv = settings.value("processingMode", "muxing").toString() == "binToYuv";
     ui->muxingModeRadio->setChecked(!isBinToYuv);
     ui->binToYuvModeRadio->setChecked(isBinToYuv);
+    // Don't hide the settings group, let onProcessingModeChanged handle visibility
+    onProcessingModeChanged();
     ui->binToYuvGroup->setVisible(isBinToYuv);
     
     // Load BIN→YUV settings
@@ -1207,4 +1295,86 @@ void MainWindow::saveSettings()
     settings.setValue("logFilters/info", ui->infoCheck->isChecked());
     settings.setValue("logFilters/warning", ui->warningCheck->isChecked());
     settings.setValue("logFilters/error", ui->errorCheck->isChecked());
+}
+
+void MainWindow::onApplyAllClicked()
+{
+    // Get the currently selected row
+    QList<QTableWidgetItem*> selectedItems = ui->fileTable->selectedItems();
+    if (selectedItems.isEmpty()) {
+        QMessageBox::information(this, "Apply All", 
+                               "Please select a file whose settings you want to apply to all other files.");
+        return;
+    }
+    
+    int sourceRow = selectedItems.first()->row();
+    if (sourceRow < 0 || sourceRow >= m_mediaInfos.size()) {
+        return;
+    }
+    
+    const MediaInfo &sourceInfo = m_mediaInfos[sourceRow];
+    QString sourceOutputName = ui->fileTable->item(sourceRow, COL_OUTPUT_NAME)->text();
+    
+    // Confirm action
+    int reply = QMessageBox::question(this, "Apply All", 
+                                    QString("Apply metadata and output name from '%1' to all %2 files?")
+                                    .arg(ui->fileTable->item(sourceRow, COL_FILENAME)->text())
+                                    .arg(ui->fileTable->rowCount()),
+                                    QMessageBox::Yes | QMessageBox::No);
+    
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+    
+    // Extract pattern from source output name if it differs from the generated one
+    QString sourceFileName = QFileInfo(m_files[sourceRow]).baseName();
+    QString generatedName = getOutputFileName(m_files[sourceRow]);
+    QString prefix = "";
+    QString suffix = "";
+    
+    // Try to extract custom prefix/suffix from the source output name
+    if (sourceOutputName != generatedName) {
+        // Find where the original filename appears in the output name
+        int pos = sourceOutputName.indexOf(sourceFileName);
+        if (pos >= 0) {
+            prefix = sourceOutputName.left(pos);
+            suffix = sourceOutputName.mid(pos + sourceFileName.length());
+            // Remove the file extension from suffix if present
+            if (suffix.contains('.')) {
+                suffix = suffix.left(suffix.lastIndexOf('.'));
+            }
+        }
+    }
+    
+    // Apply to all files
+    for (int row = 0; row < ui->fileTable->rowCount(); ++row) {
+        if (row == sourceRow) continue; // Skip source row
+        
+        // Update MediaInfo
+        if (row < m_mediaInfos.size()) {
+            MediaInfo &targetInfo = m_mediaInfos[row];
+            targetInfo.videoCodec = sourceInfo.videoCodec;
+            targetInfo.resolution = sourceInfo.resolution;
+            targetInfo.frameRate = sourceInfo.frameRate;
+            targetInfo.bitDepth = sourceInfo.bitDepth;
+            targetInfo.colorSpace = sourceInfo.colorSpace;
+            
+            // Update table metadata
+            ui->fileTable->item(row, COL_VIDEO_CODEC)->setText(sourceInfo.videoCodec);
+            ui->fileTable->item(row, COL_RESOLUTION)->setText(sourceInfo.resolution);
+            ui->fileTable->item(row, COL_FRAME_RATE)->setText(sourceInfo.frameRate);
+            ui->fileTable->item(row, COL_BIT_DEPTH)->setText(sourceInfo.bitDepth);
+            ui->fileTable->item(row, COL_COLOR_SPACE)->setText(sourceInfo.colorSpace);
+            
+            // Update output name with the extracted pattern
+            if (!prefix.isEmpty() || !suffix.isEmpty()) {
+                QString targetFileName = QFileInfo(m_files[row]).baseName();
+                QString newOutputName = prefix + targetFileName + suffix + "." + getOutputFormat();
+                ui->fileTable->item(row, COL_OUTPUT_NAME)->setText(newOutputName);
+            }
+        }
+    }
+    
+    logMessage(QString("Applied metadata and output settings from '%1' to all files")
+              .arg(ui->fileTable->item(sourceRow, COL_FILENAME)->text()), LogLevel::Info);
 }

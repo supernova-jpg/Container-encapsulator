@@ -7,10 +7,10 @@
 
 FFmpegSetupDialog::FFmpegSetupDialog(QWidget *parent)
     : QDialog(parent)
-    , m_testProcess(nullptr)
-    , m_progressTimer(new QTimer(this))
     , m_ffmpegFound(false)
     , m_ffprobeFound(false)
+    , m_testProcess(nullptr)
+    , m_progressTimer(new QTimer(this))
 {
     setWindowTitle("FFmpeg Setup - Pro Muxer");
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
@@ -386,7 +386,7 @@ void FFmpegSetupDialog::updateStatus(const QString &message, bool success)
     }
 }
 
-bool FFmpegSetupDialog::testExecutable(const QString &path, const QString &expectedName)
+bool FFmpegSetupDialog::testExecutable(const QString &path, const QString &/*expectedName*/)
 {
     if (!QFile::exists(path)) {
         return false;

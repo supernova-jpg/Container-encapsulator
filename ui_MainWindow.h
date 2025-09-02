@@ -43,6 +43,7 @@ public:
     QPushButton *addFolderBtn;
     QPushButton *removeBtn;
     QPushButton *clearBtn;
+    QPushButton *applyAllBtn;
     QSpacerItem *fileButtonSpacer;
     QTableWidget *fileTable;
     QGroupBox *settingsGroup;
@@ -131,6 +132,12 @@ public:
         clearBtn->setObjectName("clearBtn");
 
         fileButtonLayout->addWidget(clearBtn);
+
+        applyAllBtn = new QPushButton(fileGroup);
+        applyAllBtn->setObjectName("applyAllBtn");
+        applyAllBtn->setEnabled(false);
+
+        fileButtonLayout->addWidget(applyAllBtn);
 
         fileButtonSpacer = new QSpacerItem(0, 0, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
@@ -469,6 +476,10 @@ public:
         clearBtn->setText(QCoreApplication::translate("MainWindow", "Clear All", nullptr));
 #if QT_CONFIG(tooltip)
         clearBtn->setToolTip(QCoreApplication::translate("MainWindow", "Clear all files from the list", nullptr));
+#endif // QT_CONFIG(tooltip)
+        applyAllBtn->setText(QCoreApplication::translate("MainWindow", "Apply All", nullptr));
+#if QT_CONFIG(tooltip)
+        applyAllBtn->setToolTip(QCoreApplication::translate("MainWindow", "Apply the selected file's settings to all files in the list", nullptr));
 #endif // QT_CONFIG(tooltip)
         QTableWidgetItem *___qtablewidgetitem = fileTable->horizontalHeaderItem(0);
         ___qtablewidgetitem->setText(QCoreApplication::translate("MainWindow", "File Name", nullptr));

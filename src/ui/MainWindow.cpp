@@ -163,6 +163,9 @@ void MainWindow::setupConnections()
     connect(ui->fileTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableItemDoubleClicked);
     connect(ui->fileTable, &QTableWidget::customContextMenuRequested, this, &MainWindow::showTableContextMenu);
     ui->fileTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    
+    // Initialize UI state based on current processing mode
+    onProcessingModeChanged();
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
@@ -321,8 +324,12 @@ void MainWindow::startProcessing()
     // Determine conflict handling
     bool overwrite = (ui->conflictCombo->currentText() == "Overwrite");
     
+    // Determine processing mode
+    QString processingMode = ui->binToYuvModeRadio->isChecked() ? "binToYuv" : "muxing";
+    
     logMessage("Starting batch processing...", LogLevel::Info);
-    m_processor->processFiles(m_files, outputFolder, getOutputFormat(), m_mediaInfos, overwrite);
+    logMessage(QString("Processing mode: %1").arg(processingMode), LogLevel::Info);
+    m_processor->processFiles(m_files, outputFolder, getOutputFormat(), m_mediaInfos, overwrite, processingMode);
 }
 
 void MainWindow::stopProcessing()
@@ -919,11 +926,37 @@ void MainWindow::onProcessingModeChanged()
     bool isBinToYuv = ui->binToYuvModeRadio->isChecked();
     ui->binToYuvGroup->setVisible(isBinToYuv);
     
-    // Update preview when mode changes
+    // Show/hide Output Settings controls based on processing mode
     if (isBinToYuv) {
+        // In BIN->YUV mode, only show Output folder
+        ui->formatLabel->setVisible(false);
+        ui->formatCombo->setVisible(false);
+        ui->conflictCombo->setVisible(false);
+        ui->namingLabel->setVisible(false);
+        ui->prefixEdit->setVisible(false);
+        ui->suffixEdit->setVisible(false);
+        // Find and hide the naming middle label
+        QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
+        if (namingMiddleLabel) {
+            namingMiddleLabel->setVisible(false);
+        }
+        
         onBinToYuvSettingsChanged();
         logMessage("Switched to BIN→YUV processing mode", LogLevel::Info);
     } else {
+        // In muxing mode, show all Output Settings controls
+        ui->formatLabel->setVisible(true);
+        ui->formatCombo->setVisible(true);
+        ui->conflictCombo->setVisible(true);
+        ui->namingLabel->setVisible(true);
+        ui->prefixEdit->setVisible(true);
+        ui->suffixEdit->setVisible(true);
+        // Find and show the naming middle label
+        QLabel *namingMiddleLabel = ui->settingsGroup->findChild<QLabel*>("namingMiddleLabel");
+        if (namingMiddleLabel) {
+            namingMiddleLabel->setVisible(true);
+        }
+        
         logMessage("Switched to muxing processing mode", LogLevel::Info);
     }
 }

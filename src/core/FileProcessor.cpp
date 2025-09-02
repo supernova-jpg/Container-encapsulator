@@ -26,7 +26,7 @@ FileProcessor::~FileProcessor()
 
 void FileProcessor::processFiles(const QStringList &files, const QString &outputFolder, 
                                const QString &format, const QVector<MediaInfo> &mediaInfos,
-                               bool overwrite)
+                               bool overwrite, const QString &processingMode)
 {
     if (m_processing) {
         emit logMessage("Already processing files. Stop current operation first.");
@@ -38,6 +38,7 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     m_outputFormat = format;
     m_mediaInfos = mediaInfos;
     m_overwrite = overwrite;
+    m_processingMode = processingMode;
     m_processing = true;
     m_currentIndex = 0;
     m_totalFiles = files.size();
@@ -61,16 +62,43 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     for (int i = 0; i < m_files.size(); ++i) {
         const QString &inputFile = m_files[i];
         QFileInfo inputInfo(inputFile);
-        QString outputName = inputInfo.completeBaseName() + "_muxed." + m_outputFormat;
-        QString outputFile = QDir(m_outputFolder).absoluteFilePath(outputName);
+        QString outputName;
+        QString outputFile;
+        
+        MediaInfo mediaInfo = (i < m_mediaInfos.size()) ? m_mediaInfos[i] : MediaInfo();
+        
+        if (m_processingMode == "binToYuv") {
+            // For BIN->YUV conversion, use YUV naming convention
+            // Format: {sequence}_{bitDepth}bit_{scene}_{resolution}_{frameRate}fps_{colorFormat}.yuv
+            QString sequence = inputInfo.completeBaseName(); // Use filename as sequence
+            QString bitDepth = mediaInfo.bitDepth.isEmpty() ? "8" : mediaInfo.bitDepth;
+            QString scene = "converted"; // Default scene name
+            QString resolution = mediaInfo.resolution.isEmpty() ? "1920x1080" : mediaInfo.resolution;
+            QString frameRate = mediaInfo.frameRate;
+            frameRate.remove(" fps").remove("fps");
+            if (frameRate.isEmpty()) frameRate = "25";
+            QString colorFormat = "yuv420p";
+            
+            outputName = QString("%1_%2bit_%3_%4_%5fps_%6.yuv")
+                        .arg(sequence).arg(bitDepth).arg(scene)
+                        .arg(resolution).arg(frameRate).arg(colorFormat);
+        } else {
+            // Standard muxing output name
+            outputName = inputInfo.completeBaseName() + "_muxed." + m_outputFormat;
+        }
+        
+        outputFile = QDir(m_outputFolder).absoluteFilePath(outputName);
         
         // Check if output file exists and handle accordingly
         if (QFile::exists(outputFile) && !m_overwrite) {
             // Auto-rename
             int counter = 1;
-            QString baseName = inputInfo.completeBaseName() + "_muxed";
+            QString baseName = (m_processingMode == "binToYuv") 
+                              ? inputInfo.completeBaseName() + "_converted"
+                              : inputInfo.completeBaseName() + "_muxed";
+            QString extension = (m_processingMode == "binToYuv") ? "yuv" : m_outputFormat;
             do {
-                outputName = QString("%1_%2.%3").arg(baseName).arg(counter).arg(m_outputFormat);
+                outputName = QString("%1_%2.%3").arg(baseName).arg(counter).arg(extension);
                 outputFile = QDir(m_outputFolder).absoluteFilePath(outputName);
                 counter++;
             } while (QFile::exists(outputFile));
@@ -79,8 +107,12 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
         MuxingTask *task = new MuxingTask(this);
         task->setFiles(inputFile, outputFile);
 
-        MediaInfo mediaInfo = (i < m_mediaInfos.size()) ? m_mediaInfos[i] : MediaInfo();
-        QStringList commandArgs = buildFFmpegCommand(inputFile, outputFile, m_outputFormat, mediaInfo);
+        QStringList commandArgs;
+        if (m_processingMode == "binToYuv") {
+            commandArgs = buildBinToYuvCommand(inputFile, outputFile, mediaInfo);
+        } else {
+            commandArgs = buildFFmpegCommand(inputFile, outputFile, m_outputFormat, mediaInfo);
+        }
         task->setCommandAndArgs(m_ffmpegPath, commandArgs);
         
         connect(task, &MuxingTask::finished, this, &FileProcessor::onTaskFinished);
@@ -258,4 +290,67 @@ void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
     
     emit logMessage(QString("FFmpeg found in PATH - Version: %1, Release Years: %2")
                    .arg(version).arg(yearRange));
+}
+
+QStringList FileProcessor::buildBinToYuvCommand(const QString &inputFile, const QString &outputFile,
+                                               const MediaInfo &mediaInfo)
+{
+    QStringList args;
+    
+    // Input format settings for raw binary file
+    args << "-f" << "rawvideo";
+    
+    // Parse pixel format from mediaInfo or use default
+    QString pixelFormat = "yuv420p"; // default
+    if (!mediaInfo.colorSpace.isEmpty()) {
+        if (mediaInfo.colorSpace.contains("yuv420p10le") || mediaInfo.colorSpace.contains("10bit")) {
+            pixelFormat = "yuv420p10le";
+        } else if (mediaInfo.colorSpace.contains("yuv420p")) {
+            pixelFormat = "yuv420p";
+        }
+    }
+    args << "-pix_fmt" << pixelFormat;
+    
+    // Parse resolution from mediaInfo or use default
+    QString resolution = "1920x1080"; // default
+    if (!mediaInfo.resolution.isEmpty()) {
+        resolution = mediaInfo.resolution;
+        // Clean up resolution format (remove extra text)
+        QRegularExpression resRegex(R"((\d+)x(\d+))");
+        QRegularExpressionMatch match = resRegex.match(resolution);
+        if (match.hasMatch()) {
+            resolution = QString("%1x%2").arg(match.captured(1)).arg(match.captured(2));
+        }
+    }
+    args << "-s" << resolution;
+    
+    // Parse frame rate from mediaInfo or use default
+    QString frameRate = "25"; // default
+    if (!mediaInfo.frameRate.isEmpty() && !mediaInfo.frameRate.contains("Unknown")) {
+        QString fps = mediaInfo.frameRate;
+        fps.remove(" fps").remove("fps");
+        bool ok;
+        double fpsValue = fps.toDouble(&ok);
+        if (ok && fpsValue > 0) {
+            frameRate = QString::number(fpsValue);
+        }
+    }
+    args << "-r" << frameRate;
+    
+    // Input file
+    args << "-i" << QDir::toNativeSeparators(inputFile);
+    
+    // Output settings for YUV file
+    args << "-c:v" << "rawvideo";
+    args << "-pix_fmt" << pixelFormat;
+    
+    // Overwrite if needed
+    if (m_overwrite) {
+        args << "-y";
+    }
+    
+    // Output file
+    args << QDir::toNativeSeparators(outputFile);
+    
+    return args;
 }

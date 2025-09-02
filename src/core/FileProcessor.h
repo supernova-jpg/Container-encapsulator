@@ -21,7 +21,7 @@ public:
 
     void processFiles(const QStringList &files, const QString &outputFolder,
                       const QString &format, const QVector<MediaInfo> &mediaInfos,
-                      bool overwrite = false);
+                      bool overwrite = false, const QString &processingMode = "muxing");
     void stop();
 
     bool isProcessing() const { return m_processing; }
@@ -39,6 +39,8 @@ private slots:
 private:
     QStringList buildFFmpegCommand(const QString &inputFile, const QString &outputFile,
                                    const QString &format, const MediaInfo &mediaInfo);
+    QStringList buildBinToYuvCommand(const QString &inputFile, const QString &outputFile,
+                                    const MediaInfo &mediaInfo);
 
     QString findFFmpegExecutable();
     void parseAndLogFFmpegVersion(const QString &versionOutput);
@@ -53,6 +55,7 @@ private:
     QVector<MediaInfo> m_mediaInfos;
     bool m_overwrite;
     bool m_processing;
+    QString m_processingMode;
 
     int m_currentIndex;
     int m_totalFiles;

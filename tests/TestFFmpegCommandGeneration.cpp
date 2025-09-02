@@ -55,7 +55,8 @@ void TestFFmpegCommandGeneration::testBasicCommandGeneration()
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
     
-    m_processor->processFiles(files, m_helper->getTempDir(), format, true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), format, mediaInfos, true);
     
     // Wait for log messages
     QVERIFY(logSpy.wait(5000));
@@ -93,7 +94,8 @@ void TestFFmpegCommandGeneration::testCommandWithMetadata()
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
     
-    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -128,7 +130,8 @@ void TestFFmpegCommandGeneration::testCommandWithH264Metadata()
     files << m_testH264File;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -161,7 +164,8 @@ void TestFFmpegCommandGeneration::testCommandWithH265Metadata()
     files << m_testH265File;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -195,7 +199,8 @@ void TestFFmpegCommandGeneration::testCommandWithHDRMetadata()
     files << hdrFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -227,7 +232,8 @@ void TestFFmpegCommandGeneration::testResolutionMetadataInCommand()
     files << m_testVideoFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -257,7 +263,8 @@ void TestFFmpegCommandGeneration::testFrameRateMetadataInCommand()
     files << m_testVideoFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -287,7 +294,8 @@ void TestFFmpegCommandGeneration::testBitDepthMetadataInCommand()
     files << m_testVideoFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -316,7 +324,8 @@ void TestFFmpegCommandGeneration::testColorSpaceMetadataInCommand()
     files << m_testVideoFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -349,7 +358,8 @@ void TestFFmpegCommandGeneration::testCompleteMetadataIntegration()
     files << m_testVideoFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mkv", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -375,7 +385,8 @@ void TestFFmpegCommandGeneration::testMetadataMissingBugReproduction()
     files << m_testVideoFile;
     
     QSignalSpy logSpy(m_processor, &FileProcessor::logMessage);
-    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", mediaInfos, true);
     
     QVERIFY(logSpy.wait(5000));
     
@@ -413,7 +424,8 @@ void TestFFmpegCommandGeneration::testProcessingFailureDueToMissingMetadata()
     QSignalSpy errorSpy(m_processor, &FileProcessor::error);
     QSignalSpy finishedSpy(m_processor, &FileProcessor::finished);
     
-    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", true);
+    QVector<MediaInfo> mediaInfos; // Empty for test
+    m_processor->processFiles(files, m_helper->getTempDir(), "mp4", mediaInfos, true);
     
     // Wait for processing to complete
     QVERIFY(finishedSpy.wait(10000));

@@ -2,6 +2,7 @@
 build/
 debug/
 release/
+.claude/
 
 # User-specific files (Qt Creator, etc.)
 *.pro.user

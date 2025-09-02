@@ -164,42 +164,62 @@ bool FFmpegSetupDialog::checkFFmpegAvailability(QString &ffmpegPath, QString &ff
     ffprobeCandidates << "ffprobe";
 #endif
     
-    // Test FFmpeg in PATH
+    // Test FFmpeg in PATH with improved error handling
     QString ffmpegProgram, ffprobeProgram;
     bool ffmpegFound = false;
+    QString ffmpegError;
     
     for (const QString &candidate : ffmpegCandidates) {
-        ffmpegProcess.start(candidate, QStringList() << "--version");
-        if (ffmpegProcess.waitForStarted(3000) && ffmpegProcess.waitForFinished(3000) && ffmpegProcess.exitCode() == 0) {
-            ffmpegProgram = candidate;
-            ffmpegFound = true;
-            break;
+        ffmpegProcess.start(candidate, QStringList() << "-version");
+        if (ffmpegProcess.waitForStarted(5000)) {  // Increased timeout
+            if (ffmpegProcess.waitForFinished(5000) && ffmpegProcess.exitCode() == 0) {
+                QString output = ffmpegProcess.readAllStandardOutput();
+                if (output.contains("ffmpeg version")) {  // Verify it's actually FFmpeg
+                    ffmpegProgram = candidate;
+                    ffmpegFound = true;
+                    break;
+                }
+            } else {
+                ffmpegError = QString("Process failed with exit code: %1").arg(ffmpegProcess.exitCode());
+            }
+        } else {
+            ffmpegError = "Process failed to start";
         }
         ffmpegProcess.kill();
         ffmpegProcess.waitForFinished(1000);
     }
     
     if (!ffmpegFound) {
-        errorMessage = "FFmpeg not found in PATH";
+        errorMessage = QString("FFmpeg not found in PATH. Last error: %1").arg(ffmpegError.isEmpty() ? "Unknown" : ffmpegError);
         return false;
     }
     
-    // Test FFprobe in PATH
+    // Test FFprobe in PATH with improved error handling
     bool ffprobeFound = false;
+    QString ffprobeError;
     
     for (const QString &candidate : ffprobeCandidates) {
-        ffprobeProcess.start(candidate, QStringList() << "--version");
-        if (ffprobeProcess.waitForStarted(3000) && ffprobeProcess.waitForFinished(3000) && ffprobeProcess.exitCode() == 0) {
-            ffprobeProgram = candidate;
-            ffprobeFound = true;
-            break;
+        ffprobeProcess.start(candidate, QStringList() << "-version");
+        if (ffprobeProcess.waitForStarted(5000)) {  // Increased timeout
+            if (ffprobeProcess.waitForFinished(5000) && ffprobeProcess.exitCode() == 0) {
+                QString output = ffprobeProcess.readAllStandardOutput();
+                if (output.contains("ffprobe version")) {  // Verify it's actually FFprobe
+                    ffprobeProgram = candidate;
+                    ffprobeFound = true;
+                    break;
+                }
+            } else {
+                ffprobeError = QString("Process failed with exit code: %1").arg(ffprobeProcess.exitCode());
+            }
+        } else {
+            ffprobeError = "Process failed to start";
         }
         ffprobeProcess.kill();
         ffprobeProcess.waitForFinished(1000);
     }
     
     if (!ffprobeFound) {
-        errorMessage = "FFprobe not found in PATH";
+        errorMessage = QString("FFprobe not found in PATH. Last error: %1").arg(ffprobeError.isEmpty() ? "Unknown" : ffprobeError);
         return false;
     }
     

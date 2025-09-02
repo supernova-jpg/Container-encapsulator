@@ -241,17 +241,24 @@ QString FileProcessor::findFFmpegExecutable()
     QProcess process;
     
     // Try different possible names for ffmpeg
-    QStringList candidates = {"ffmpeg", "ffmpeg.exe"};
+    QStringList candidates;
+#ifdef Q_OS_WIN
+    candidates << "ffmpeg" << "ffmpeg.exe";
+#else
+    candidates << "ffmpeg";
+#endif
     
     for (const QString &program : candidates) {
         // Check if ffmpeg is available in PATH by running -version
         process.start(program, QStringList() << "-version");
-        if (process.waitForStarted(3000) && process.waitForFinished(8000)) {
+        if (process.waitForStarted(5000) && process.waitForFinished(5000)) {
             if (process.exitCode() == 0) {
-                // Parse version output to extract version and year
                 QString output = QString::fromUtf8(process.readAllStandardOutput());
-                parseAndLogFFmpegVersion(output);
-                return program;
+                // Verify it's actually FFmpeg by checking the output
+                if (output.contains("ffmpeg version")) {
+                    parseAndLogFFmpegVersion(output);
+                    return program;
+                }
             }
         }
         
@@ -265,7 +272,7 @@ QString FileProcessor::findFFmpegExecutable()
 
 void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
 {
-    // Parse FFmpeg version information from --version output
+    // Parse FFmpeg version information from -version output
     // Example output: "ffmpeg version 4.4.2 Copyright (c) 2000-2021 the FFmpeg developers"
     
     QStringList lines = versionOutput.split('\n');

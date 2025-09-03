@@ -221,7 +221,7 @@ void MainWindow::addFiles()
         this,
         "Select Video Files",
         lastDir,
-        "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.3gp *.ts *.h264 *.h265 *.bin *.264 *.265);;All Files (*)"
+        "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.3gp *.ts *.h264 *.h265 *.bin *.264 *.265 *.hevc *.26l *.ivf);;All Files (*)"
     );
     
     if (!files.isEmpty()) {

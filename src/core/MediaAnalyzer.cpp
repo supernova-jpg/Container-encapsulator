@@ -32,6 +32,7 @@ void MediaAnalyzer::analyzeFile(int index, const QString &filePath)
 
 void MediaAnalyzer::analyzeFiles(const QStringList &files)
 {
+    // CRITICAL PATH: Entry point for batch media analysis
     for (int i = 0; i < files.size(); ++i) {
         analyzeFile(i, files[i]);
     }
@@ -50,6 +51,7 @@ void MediaAnalyzer::stop()
 
 void MediaAnalyzer::processNextFile()
 {
+    // CRITICAL PATH: Process analysis tasks sequentially from queue
     if (m_taskQueue.isEmpty()) {
         m_analyzing = false;
         emit allAnalysisFinished();
@@ -117,6 +119,7 @@ void MediaAnalyzer::onProbeError(QProcess::ProcessError error)
 
 MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
 {
+    // CRITICAL PATH: Parse FFprobe JSON output to extract media metadata
     MediaInfo info;
     
     QJsonParseError error;
@@ -156,6 +159,7 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
             QJsonObject stream = streamValue.toObject();
             QString codecType = stream["codec_type"].toString();
             
+            // CRITICAL PATH: Extract video stream metadata
             if (codecType == "video" && info.videoCodec.isEmpty()) {
                 info.videoCodec = stream["codec_name"].toString().toUpper();
                 
@@ -196,7 +200,7 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                     }
                 }
                 
-                // Parse HDR-related color metadata
+                // CRITICAL PATH: Parse HDR-related color metadata for proper color handling
                 if (stream.contains("color_primaries")) {
                     info.colorPrimariesCode = stream["color_primaries"].toString();
                 }
@@ -301,6 +305,7 @@ QString MediaAnalyzer::formatFileSize(qint64 size)
 
 QString MediaAnalyzer::findFFprobeExecutable()
 {
+    // CRITICAL PATH: Locate FFprobe executable - required for media analysis
     QProcess process;
     
 #ifdef Q_OS_WIN

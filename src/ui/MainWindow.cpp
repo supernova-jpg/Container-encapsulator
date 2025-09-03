@@ -874,7 +874,7 @@ void MainWindow::setupEditableCell(int row, int column, const QString &currentVa
             switch (column) {
                 case COL_VIDEO_CODEC: info.videoCodec = text; break;
                 case COL_RESOLUTION: {
-                    if (text == "手动输入…") {
+                    if (text == "Manual Input...") {
                         QString manual = promptManualResolution();
                         if (!manual.isEmpty()) {
                             info.resolution = manual;
@@ -904,15 +904,15 @@ void MainWindow::setupEditableCell(int row, int column, const QString &currentVa
 QString MainWindow::promptManualResolution()
 {
     QDialog dialog(this);
-    dialog.setWindowTitle("输入分辨率");
+    dialog.setWindowTitle("Enter Resolution");
     QFormLayout form(&dialog);
     QLineEdit widthEdit; QLineEdit heightEdit;
     widthEdit.setValidator(new QIntValidator(1, 16384, &dialog));
     heightEdit.setValidator(new QIntValidator(1, 16384, &dialog));
-    widthEdit.setPlaceholderText("宽度，例如 1920");
-    heightEdit.setPlaceholderText("高度，例如 1080");
-    form.addRow("宽度:", &widthEdit);
-    form.addRow("高度:", &heightEdit);
+    widthEdit.setPlaceholderText("Width, e.g. 1920");
+    heightEdit.setPlaceholderText("Height, e.g. 1080");
+    form.addRow("Width:", &widthEdit);
+    form.addRow("Height:", &heightEdit);
     QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     form.addRow(&buttons);
     QObject::connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -949,7 +949,7 @@ QStringList MainWindow::getResolutionPresets()
         "1024x768",
         "854x480",
         "640x480",
-        "手动输入…",
+        "Manual Input...",
         "Unknown"
     };
 }
@@ -1139,11 +1139,11 @@ void MainWindow::onBinToYuvSettingsChanged()
     
     // Generate preview filename
     QString preview = QString("%1_%2bit_%3_%4_%5fps_%6.yuv")
-                     .arg(sequence.isEmpty() ? "[序列代号]" : sequence)
-                     .arg(bitDepth.isEmpty() ? "[位深]" : bitDepth)
-                     .arg(scene.isEmpty() ? "[场景描述名]" : scene)
-                     .arg(resolution.isEmpty() ? "[分辨率]" : resolution)
-                     .arg(frameRate.isEmpty() ? "[帧率]" : frameRate.replace(" fps", ""))
+                     .arg(sequence.isEmpty() ? "[Sequence ID]" : sequence)
+                     .arg(bitDepth.isEmpty() ? "[Bit Depth]" : bitDepth)
+                     .arg(scene.isEmpty() ? "[Scene Name]" : scene)
+                     .arg(resolution.isEmpty() ? "[Resolution]" : resolution)
+                     .arg(frameRate.isEmpty() ? "[Frame Rate]" : frameRate.replace(" fps", ""))
                      .arg(colorFormat.isEmpty() ? "420p/yuv420p10le" : colorFormat);
     
     ui->previewLabel->setText(preview);

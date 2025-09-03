@@ -39,6 +39,7 @@ void MuxingTask::setCommandAndArgs(const QString &program, const QStringList &ar
 
 void MuxingTask::start()
 {
+    // CRITICAL PATH: Start FFmpeg process for media muxing
     if (!m_process) {
         m_process = new QProcess(this);
         connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
@@ -96,6 +97,7 @@ bool MuxingTask::isRunning() const
 
 void MuxingTask::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
+    // CRITICAL PATH: Handle FFmpeg process completion and determine success/failure
     m_progressTimer->stop();
     
     QString message;
@@ -183,7 +185,8 @@ void MuxingTask::checkProgress()
 
 void MuxingTask::parseFFmpegOutput(const QString &output)
 {
-    // Parse duration (appears early in the output)
+    // CRITICAL PATH: Parse FFmpeg output for progress tracking and error detection
+    // CRITICAL PATH: Parse duration to enable accurate progress calculation
     if (!m_durationParsed) {
         QRegularExpression durationRegex(R"(Duration:\s*(\d+):(\d+):(\d+)\.(\d+))");
         QRegularExpressionMatch durationMatch = durationRegex.match(output);

@@ -306,7 +306,7 @@ void MainWindow::analyzeFiles()
     
     for (int i = 0; i < m_files.size(); ++i) {
         m_analyzer->analyzeFile(i, m_files[i]);
-        updateTableRowStatus(i, "解析中");
+        updateTableRowStatus(i, "Analyzing...");
     }
 }
 
@@ -371,7 +371,7 @@ void MainWindow::startProcessing()
     logMessage("Starting batch processing...", LogLevel::Info);
     // Mark all rows as queued before starting
     for (int i = 0; i < ui->fileTable->rowCount(); ++i) {
-        updateTableRowStatus(i, "排队中");
+        updateTableRowStatus(i, "Queued");
     }
     logMessage(QString("Processing mode: %1").arg(processingMode), LogLevel::Info);
     m_processor->processFiles(m_files, outputFolder, getOutputFormat(), m_mediaInfos, overwrite, processingMode);
@@ -402,7 +402,7 @@ void MainWindow::onTaskProgress(int current, int total, const QString &currentFi
     // Update table status
     for (int i = 0; i < ui->fileTable->rowCount(); ++i) {
         if (ui->fileTable->item(i, COL_FILENAME)->data(Qt::UserRole).toString() == currentFile) {
-            updateTableRowStatus(i, "ffmpeg执行中");
+            updateTableRowStatus(i, "Processing");
             break;
         }
     }
@@ -413,7 +413,7 @@ void MainWindow::onTaskFinished()
     m_processing = false;
     ui->startBtn->setEnabled(true);
     ui->stopBtn->setEnabled(false);
-    ui->statusLabel->setText("完成");
+    ui->statusLabel->setText("Finished");
     ui->progressBar->setValue(ui->progressBar->maximum());
     
     logMessage("All files processed successfully!", LogLevel::Info);
@@ -423,7 +423,7 @@ void MainWindow::onFileProcessed(const QString &inputFile, bool success)
 {
     for (int i = 0; i < ui->fileTable->rowCount(); ++i) {
         if (ui->fileTable->item(i, COL_FILENAME)->data(Qt::UserRole).toString() == inputFile) {
-            updateTableRowStatus(i, success ? "ffmpeg执行成功" : "ffmpeg执行失败");
+            updateTableRowStatus(i, success ? "Completed" : "Failed");
             break;
         }
     }
@@ -451,7 +451,7 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
 {
     if (index >= 0 && index < m_mediaInfos.size()) {
         m_mediaInfos[index] = info;
-        updateTableRowStatus(index, info.analyzed ? "解析完成" : "解析失败");
+        updateTableRowStatus(index, info.analyzed ? "Ready" : "Analysis Failed");
 
         // HDR detection info logging
         if (info.isHdr) {
@@ -494,7 +494,7 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
 
 void MainWindow::onMediaAnalysisError(int index, const QString &error)
 {
-    updateTableRowStatus(index, "解析失败");
+    updateTableRowStatus(index, "Analysis Failed");
     logMessage(QString("Analysis failed for file %1: %2. Applying intelligent fallback defaults.").arg(index + 1).arg(error), LogLevel::Warning);
     
     // Create default MediaInfo with enhanced intelligent guesses and enable editing
@@ -715,7 +715,7 @@ void MainWindow::addFilesToTable(const QStringList &files)
             nameItem->setData(Qt::UserRole, file); // Store full path
             ui->fileTable->setItem(row, COL_FILENAME, nameItem);
             
-            ui->fileTable->setItem(row, COL_STATUS, new QTableWidgetItem("解析中"));
+            ui->fileTable->setItem(row, COL_STATUS, new QTableWidgetItem("Analyzing..."));
             ui->fileTable->setItem(row, COL_VIDEO_CODEC, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_RESOLUTION, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_FRAME_RATE, new QTableWidgetItem("Unknown"));

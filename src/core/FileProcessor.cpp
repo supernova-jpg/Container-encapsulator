@@ -179,6 +179,8 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
                             .arg(message));
     }
 
+    emit fileProcessed(inputFile, success);
+
     m_currentTask->deleteLater();
     m_currentTask = nullptr;
     m_currentIndex++;
@@ -195,13 +197,15 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 
     args << "-fflags" << "+genpts";
 
-    if(mediaInfo.videoCodec == "H.265")
-    {
+    // Only specify -framerate when duration is unknown (likely raw streams) or user explicitly provided a value
+    // We do NOT auto-derive from parsed frameRate for containerized inputs
+    if (mediaInfo.duration.isEmpty() || mediaInfo.duration.compare("Unknown", Qt::CaseInsensitive) == 0) {
         QString frameRate = mediaInfo.frameRate;
-        frameRate.remove(" fps").remove("fps");
-        bool ok;
-        double fps = frameRate.toDouble(&ok);
-        args << "-framerate" << QString::number(fps);
+        frameRate.remove(" fps", Qt::CaseInsensitive).remove("fps", Qt::CaseInsensitive);
+        if (frameRate.isEmpty() || frameRate.compare("Unknown", Qt::CaseInsensitive) == 0) {
+            frameRate = "30"; // default 30fps when user did not provide
+        }
+        args << "-framerate" << frameRate;
     }
 
     args << "-i" << QDir::toNativeSeparators(inputFile);
@@ -218,6 +222,20 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
         args << "-f" << "matroska";
     }
 
+    // HDR handling: if detected HDR, set color metadata accordingly
+    if (mediaInfo.isHdr) {
+        // Default primaries/matrix to BT.2020 if unknown
+        QString primaries = mediaInfo.colorPrimariesCode.isEmpty() ? "bt2020" : mediaInfo.colorPrimariesCode;
+        QString matrix = mediaInfo.colorSpaceCode.isEmpty() ? "bt2020nc" : mediaInfo.colorSpaceCode;
+        QString trc = (mediaInfo.hdrEotf == "HLG") ? "arib-std-b67" : "smpte2084"; // PQ default otherwise
+        args << "-fps_mode" << "vfr"; // keep as in requirement example
+        if (format.toLower() == "mp4") {
+            args << "-movflags" << "faststart";
+        }
+        args << "-color_primaries" << primaries;
+        args << "-color_trc" << trc;
+        args << "-colorspace" << matrix;
+    }
 
     args << QDir::toNativeSeparators(outputFile);
 

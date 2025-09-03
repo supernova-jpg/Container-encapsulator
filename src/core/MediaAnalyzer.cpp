@@ -59,16 +59,6 @@ void MediaAnalyzer::processNextFile()
     m_analyzing = true;
     m_currentTask = m_taskQueue.dequeue();
     
-    // Check if it's a raw stream file
-    if (isRawStreamFile(m_currentTask.filePath)) {
-        // For raw streams, we can't analyze much, provide default info
-        MediaInfo info = createDefaultMediaInfo(m_currentTask.filePath);
-        info.isRawStream = true;
-        emit analysisFinished(m_currentTask.index, info);
-        processNextFile();
-        return;
-    }
-    
     if (m_ffprobePath.isEmpty()) {
         emit analysisError(m_currentTask.index, "FFprobe not found");
         processNextFile();
@@ -206,7 +196,34 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                     }
                 }
                 
-                // Parse color space
+                // Parse HDR-related color metadata
+                if (stream.contains("color_primaries")) {
+                    info.colorPrimariesCode = stream["color_primaries"].toString();
+                }
+                if (stream.contains("color_transfer")) {
+                    info.colorTransferCode = stream["color_transfer"].toString();
+                }
+                if (stream.contains("color_space")) {
+                    info.colorSpaceCode = stream["color_space"].toString();
+                }
+
+                // Mark HDR if transfer function is PQ or HLG
+                if (info.colorTransferCode == "smpte2084") {
+                    info.isHdr = true;
+                    info.hdrEotf = "PQ";
+                } else if (info.colorTransferCode == "arib-std-b67") {
+                    info.isHdr = true;
+                    info.hdrEotf = "HLG";
+                }
+
+                // Heuristic: if transfer missing but primaries/matrix suggest BT.2020 and bit depth >=10, mark incomplete HDR
+                bool isAtLeast10Bit = info.bitDepth.contains("10") || info.bitDepth.contains("12") || info.bitDepth.contains("16");
+                if (!info.isHdr && info.colorTransferCode.isEmpty() &&
+                    (info.colorPrimariesCode.contains("2020") || info.colorSpaceCode.contains("2020")) && isAtLeast10Bit) {
+                    info.hdrMetadataIncomplete = true;
+                }
+
+                // Parse color space (human readable)
                 if (stream.contains("color_space")) {
                     QString colorSpace = stream["color_space"].toString();
                     if (colorSpace == "bt709") {

@@ -2,11 +2,10 @@
 #define FILEPROCESSOR_H
 
 #include <QObject>
-#include <QProcess>
-#include <QTimer>
 #include <QStringList>
 #include <QQueue>
-#include <QFileInfo>
+#include <QVector>
+#include <QMap>
 
 class MuxingTask;
 struct MediaInfo;
@@ -37,10 +36,16 @@ private slots:
     void onTaskFinished(bool success, const QString &message);
 
 private:
+
+    QString detectVideoFormatFromFileName(const QString &fileName);
+    QString parsePixelFormat(const MediaInfo &mediaInfo) const;
+    QString generateOutputFilePath(const QString &inputFile, const MediaInfo &mediaInfo);
+
     QStringList buildFFmpegCommand(const QString &inputFile, const QString &outputFile,
                                    const QString &format, const MediaInfo &mediaInfo);
     QStringList buildBinToYuvCommand(const QString &inputFile, const QString &outputFile,
-                                    const MediaInfo &mediaInfo);
+                                     const MediaInfo &mediaInfo);
+
 
     QString findFFmpegExecutable();
     void parseAndLogFFmpegVersion(const QString &versionOutput);

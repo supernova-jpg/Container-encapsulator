@@ -37,6 +37,13 @@ struct MediaInfo {
     QString bitrate;
     QString bitDepth;
     QString colorSpace;
+    // HDR metadata (from ffprobe)
+    QString colorPrimariesCode;   // e.g., bt2020
+    QString colorTransferCode;    // e.g., smpte2084 (PQ), arib-std-b67 (HLG)
+    QString colorSpaceCode;       // e.g., bt2020nc
+    bool isHdr = false;           // true if transfer is PQ/HLG and primaries/matrix suggest HDR
+    QString hdrEotf;              // "PQ" or "HLG" when isHdr
+    bool hdrMetadataIncomplete = false; // true if HDR suspected but missing transfer or inconsistent
     bool isRawStream = false;
     bool analyzed = false;
 };
@@ -82,6 +89,7 @@ private slots:
     void stopProcessing();
     void onTaskProgress(int current, int total, const QString &currentFile);
     void onTaskFinished();
+    void onFileProcessed(const QString &inputFile, bool success);
     
     // Logging
     void onLogMessage(const QString &message, LogLevel level = LogLevel::Info);
@@ -128,6 +136,7 @@ private:
     bool shouldShowLogLevel(LogLevel level);
     void updateTableRowStatus(int row, const QString &status);
     void showCompatibilityWarning(const QString &codec, const QString &container);
+    QString promptManualResolution();
     
     // Editable table functionality
     void setupEditableCell(int row, int column, const QString &currentValue, const QStringList &options);

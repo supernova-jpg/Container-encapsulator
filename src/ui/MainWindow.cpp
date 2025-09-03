@@ -14,6 +14,11 @@
 #include <QItemDelegate>
 #include <QTimer>
 #include <QRegularExpression>
+#include <QDialog>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QDialogButtonBox>
+#include <QIntValidator>
 #ifdef Q_OS_WIN
 #include <QSettings>
 #endif
@@ -84,6 +89,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     connect(m_processor, &FileProcessor::progress, this, &MainWindow::onTaskProgress);
     connect(m_processor, &FileProcessor::finished, this, &MainWindow::onTaskFinished);
+    connect(m_processor, &FileProcessor::fileProcessed, this, &MainWindow::onFileProcessed);
     connect(m_processor, &FileProcessor::logMessage, this, [this](const QString &msg) {
         // Automatically detect log level from message prefix
         LogLevel level = LogLevel::Info;
@@ -363,6 +369,10 @@ void MainWindow::startProcessing()
     QString processingMode = ui->binToYuvModeRadio->isChecked() ? "binToYuv" : "muxing";
     
     logMessage("Starting batch processing...", LogLevel::Info);
+    // Mark all rows as queued before starting
+    for (int i = 0; i < ui->fileTable->rowCount(); ++i) {
+        updateTableRowStatus(i, "Queued");
+    }
     logMessage(QString("Processing mode: %1").arg(processingMode), LogLevel::Info);
     m_processor->processFiles(m_files, outputFolder, getOutputFormat(), m_mediaInfos, overwrite, processingMode);
 }
@@ -409,6 +419,16 @@ void MainWindow::onTaskFinished()
     logMessage("All files processed successfully!", LogLevel::Info);
 }
 
+void MainWindow::onFileProcessed(const QString &inputFile, bool success)
+{
+    for (int i = 0; i < ui->fileTable->rowCount(); ++i) {
+        if (ui->fileTable->item(i, COL_FILENAME)->data(Qt::UserRole).toString() == inputFile) {
+            updateTableRowStatus(i, success ? "Completed" : "Failed");
+            break;
+        }
+    }
+}
+
 void MainWindow::onLogMessage(const QString &message, LogLevel level)
 {
     logMessage(message, level);
@@ -432,6 +452,16 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
     if (index >= 0 && index < m_mediaInfos.size()) {
         m_mediaInfos[index] = info;
         updateTableRowStatus(index, info.analyzed ? "Ready" : "Analysis Failed");
+
+        // HDR detection info logging
+        if (info.isHdr) {
+            logMessage(QString("Detected HDR stream (EOTF: %1, primaries: %2, matrix: %3)")
+                       .arg(info.hdrEotf.isEmpty() ? "Unknown" : info.hdrEotf)
+                       .arg(info.colorPrimariesCode.isEmpty() ? "Unknown" : info.colorPrimariesCode)
+                       .arg(info.colorSpaceCode.isEmpty() ? "Unknown" : info.colorSpaceCode), LogLevel::Info);
+        } else if (info.hdrMetadataIncomplete) {
+            logMessage("[WARN] HDR-like color primaries detected but transfer function missing. Please verify PQ/HLG manually.", LogLevel::Warning);
+        }
         
         // Update table cells with analyzed information
         if (index < ui->fileTable->rowCount()) {
@@ -464,7 +494,7 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
 
 void MainWindow::onMediaAnalysisError(int index, const QString &error)
 {
-    updateTableRowStatus(index, "Smart Defaults Applied");
+    updateTableRowStatus(index, "Analysis Failed");
     logMessage(QString("Analysis failed for file %1: %2. Applying intelligent fallback defaults.").arg(index + 1).arg(error), LogLevel::Warning);
     
     // Create default MediaInfo with enhanced intelligent guesses and enable editing
@@ -685,7 +715,7 @@ void MainWindow::addFilesToTable(const QStringList &files)
             nameItem->setData(Qt::UserRole, file); // Store full path
             ui->fileTable->setItem(row, COL_FILENAME, nameItem);
             
-            ui->fileTable->setItem(row, COL_STATUS, new QTableWidgetItem("Ready"));
+            ui->fileTable->setItem(row, COL_STATUS, new QTableWidgetItem("Analyzing..."));
             ui->fileTable->setItem(row, COL_VIDEO_CODEC, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_RESOLUTION, new QTableWidgetItem("Unknown"));
             ui->fileTable->setItem(row, COL_FRAME_RATE, new QTableWidgetItem("Unknown"));
@@ -843,7 +873,20 @@ void MainWindow::setupEditableCell(int row, int column, const QString &currentVa
             MediaInfo &info = m_mediaInfos[row];
             switch (column) {
                 case COL_VIDEO_CODEC: info.videoCodec = text; break;
-                case COL_RESOLUTION: info.resolution = text; break;
+                case COL_RESOLUTION: {
+                    if (text == "Manual Input...") {
+                        QString manual = promptManualResolution();
+                        if (!manual.isEmpty()) {
+                            info.resolution = manual;
+                            if (QComboBox *c = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_RESOLUTION))) {
+                                c->setCurrentText(manual);
+                            }
+                        }
+                    } else {
+                        info.resolution = text;
+                    }
+                    break;
+                }
                 case COL_FRAME_RATE: info.frameRate = text; break;
                 case COL_BIT_DEPTH: info.bitDepth = text; break;
                 case COL_COLOR_SPACE: info.colorSpace = text; break;
@@ -856,6 +899,32 @@ void MainWindow::setupEditableCell(int row, int column, const QString &currentVa
     });
     
     ui->fileTable->setCellWidget(row, column, combo);
+}
+
+QString MainWindow::promptManualResolution()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle("Enter Resolution");
+    QFormLayout form(&dialog);
+    QLineEdit widthEdit; QLineEdit heightEdit;
+    widthEdit.setValidator(new QIntValidator(1, 16384, &dialog));
+    heightEdit.setValidator(new QIntValidator(1, 16384, &dialog));
+    widthEdit.setPlaceholderText("Width, e.g. 1920");
+    heightEdit.setPlaceholderText("Height, e.g. 1080");
+    form.addRow("Width:", &widthEdit);
+    form.addRow("Height:", &heightEdit);
+    QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form.addRow(&buttons);
+    QObject::connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString w = widthEdit.text().trimmed();
+        QString h = heightEdit.text().trimmed();
+        if (!w.isEmpty() && !h.isEmpty()) {
+            return QString("%1x%2").arg(w).arg(h);
+        }
+    }
+    return QString();
 }
 
 QStringList MainWindow::getVideoCodecOptions()
@@ -880,7 +949,7 @@ QStringList MainWindow::getResolutionPresets()
         "1024x768",
         "854x480",
         "640x480",
-        "Custom",
+        "Manual Input...",
         "Unknown"
     };
 }
@@ -1070,11 +1139,11 @@ void MainWindow::onBinToYuvSettingsChanged()
     
     // Generate preview filename
     QString preview = QString("%1_%2bit_%3_%4_%5fps_%6.yuv")
-                     .arg(sequence.isEmpty() ? "[序列代号]" : sequence)
-                     .arg(bitDepth.isEmpty() ? "[位深]" : bitDepth)
-                     .arg(scene.isEmpty() ? "[场景描述名]" : scene)
-                     .arg(resolution.isEmpty() ? "[分辨率]" : resolution)
-                     .arg(frameRate.isEmpty() ? "[帧率]" : frameRate.replace(" fps", ""))
+                     .arg(sequence.isEmpty() ? "[Sequence ID]" : sequence)
+                     .arg(bitDepth.isEmpty() ? "[Bit Depth]" : bitDepth)
+                     .arg(scene.isEmpty() ? "[Scene Name]" : scene)
+                     .arg(resolution.isEmpty() ? "[Resolution]" : resolution)
+                     .arg(frameRate.isEmpty() ? "[Frame Rate]" : frameRate.replace(" fps", ""))
                      .arg(colorFormat.isEmpty() ? "420p/yuv420p10le" : colorFormat);
     
     ui->previewLabel->setText(preview);

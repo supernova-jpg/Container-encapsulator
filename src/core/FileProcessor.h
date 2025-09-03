@@ -30,6 +30,7 @@ signals:
     void finished();
     void logMessage(const QString &message);
     void error(const QString &message);
+    void fileProcessed(const QString &inputFile, bool success);
 
 private slots:
     void processNextFile();

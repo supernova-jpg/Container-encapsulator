@@ -6,6 +6,7 @@
 
 int main(int argc, char *argv[])
 {
+    // CRITICAL PATH: Application entry point - initialize Qt framework
     QApplication app(argc, argv);
     
     app.setApplicationName("Pro Muxer");

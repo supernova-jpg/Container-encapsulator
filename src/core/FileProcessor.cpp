@@ -39,7 +39,7 @@ QString FileProcessor::parsePixelFormat(const MediaInfo &mediaInfo) const
             return "yuv420p";
         }
     }
-    // 默认值
+    // Default value
     return (mediaInfo.bitDepth == "10") ? "yuv420p10le" : "yuv420p";
 }
 
@@ -63,6 +63,7 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
                                  const QString &format, const QVector<MediaInfo> &mediaInfos,
                                  bool overwrite, const QString &processingMode)
 {
+    // CRITICAL PATH: Main entry point for batch file processing
     if (m_processing) {
         emit logMessage("Already processing files. Stop current operation first.");
         return;
@@ -91,6 +92,7 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
     }
 
 
+    // CRITICAL PATH: Create processing tasks for each file in the batch
     for (int i = 0; i < m_files.size(); ++i) {
         const QString &inputFile = m_files[i];
         const MediaInfo mediaInfo = (i < m_mediaInfos.size()) ? m_mediaInfos[i] : MediaInfo();
@@ -101,6 +103,7 @@ void FileProcessor::processFiles(const QStringList &files, const QString &output
         MuxingTask *task = new MuxingTask(this);
         task->setFiles(inputFile, outputFile);
 
+        // Build command based on processing mode (standard muxing vs BIN->YUV conversion)
         QStringList commandArgs;
         if (m_processingMode == "binToYuv") {
             commandArgs = buildBinToYuvCommand(inputFile, outputFile, mediaInfo);
@@ -140,6 +143,7 @@ void FileProcessor::stop()
 
 void FileProcessor::processNextFile()
 {
+    // CRITICAL PATH: Process files one by one from the queue
     if (m_taskQueue.isEmpty()) {
         m_processing = false;
         emit logMessage("Batch processing completed. Review individual file results above.");
@@ -179,6 +183,8 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
                             .arg(message));
     }
 
+    emit fileProcessed(inputFile, success);
+
     m_currentTask->deleteLater();
     m_currentTask = nullptr;
     m_currentIndex++;
@@ -191,17 +197,20 @@ void FileProcessor::onTaskFinished(bool success, const QString &message)
 QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QString &outputFile,
                                               const QString &format, const MediaInfo &mediaInfo)
 {
+    // CRITICAL PATH: Build FFmpeg command with proper codec and format settings
     QStringList args;
 
     args << "-fflags" << "+genpts";
 
-    if(mediaInfo.videoCodec == "H.265")
-    {
+    // Only specify -framerate when duration is unknown (likely raw streams) or user explicitly provided a value
+    // We do NOT auto-derive from parsed frameRate for containerized inputs
+    if (mediaInfo.duration.isEmpty() || mediaInfo.duration.compare("Unknown", Qt::CaseInsensitive) == 0) {
         QString frameRate = mediaInfo.frameRate;
-        frameRate.remove(" fps").remove("fps");
-        bool ok;
-        double fps = frameRate.toDouble(&ok);
-        args << "-framerate" << QString::number(fps);
+        frameRate.remove(" fps", Qt::CaseInsensitive).remove("fps", Qt::CaseInsensitive);
+        if (frameRate.isEmpty() || frameRate.compare("Unknown", Qt::CaseInsensitive) == 0) {
+            frameRate = "30"; // default 30fps when user did not provide
+        }
+        args << "-framerate" << frameRate;
     }
 
     args << "-i" << QDir::toNativeSeparators(inputFile);
@@ -218,6 +227,20 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
         args << "-f" << "matroska";
     }
 
+    // CRITICAL PATH: HDR handling - preserve HDR metadata for proper color reproduction
+    if (mediaInfo.isHdr) {
+        // Default primaries/matrix to BT.2020 if unknown
+        QString primaries = mediaInfo.colorPrimariesCode.isEmpty() ? "bt2020" : mediaInfo.colorPrimariesCode;
+        QString matrix = mediaInfo.colorSpaceCode.isEmpty() ? "bt2020nc" : mediaInfo.colorSpaceCode;
+        QString trc = (mediaInfo.hdrEotf == "HLG") ? "arib-std-b67" : "smpte2084"; // PQ default otherwise
+        args << "-fps_mode" << "vfr"; // keep as in requirement example
+        if (format.toLower() == "mp4") {
+            args << "-movflags" << "faststart";
+        }
+        args << "-color_primaries" << primaries;
+        args << "-color_trc" << trc;
+        args << "-colorspace" << matrix;
+    }
 
     args << QDir::toNativeSeparators(outputFile);
 
@@ -226,6 +249,7 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 
 QString FileProcessor::findFFmpegExecutable()
 {
+    // CRITICAL PATH: Locate FFmpeg executable - required for all operations
     QProcess process;
 
     // Try different possible names for ffmpeg
@@ -297,6 +321,7 @@ void FileProcessor::parseAndLogFFmpegVersion(const QString &versionOutput)
 
 QString FileProcessor::generateOutputFilePath(const QString &inputFile, const MediaInfo &mediaInfo)
 {
+    // CRITICAL PATH: Generate output file paths with proper naming conventions
     QFileInfo inputInfo(inputFile);
     QString outputName;
 

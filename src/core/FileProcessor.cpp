@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QRegularExpression>
 #include <QProcess>
+#include <QSettings>
 
 QString FileProcessor::detectVideoFormatFromFileName(const QString &fileName)
 {
@@ -202,19 +203,58 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
 
     args << "-fflags" << "+genpts";
 
-    // Only specify -framerate when duration is unknown (likely raw streams) or user explicitly provided a value
-    // We do NOT auto-derive from parsed frameRate for containerized inputs
+    // Only specify -framerate when duration is unknown (likely raw streams)
     if (mediaInfo.duration.isEmpty() || mediaInfo.duration.compare("Unknown", Qt::CaseInsensitive) == 0) {
-        QString frameRate = mediaInfo.frameRate;
-        frameRate.remove(" fps", Qt::CaseInsensitive).remove("fps", Qt::CaseInsensitive);
-        if (frameRate.isEmpty() || frameRate.compare("Unknown", Qt::CaseInsensitive) == 0) {
-            frameRate = "30"; // default 30fps when user did not provide
-        }
+        auto normalizeFpsStr = [](const QString &s) -> QString {
+            QString text = s;
+            QString src = text;
+            // Try rational first
+            QRegularExpression rat(R"((\d+)\s*/\s*(\d+))");
+            QRegularExpressionMatch rm = rat.match(src);
+            double fps = 0.0; bool ok = false;
+            if (rm.hasMatch()) {
+                bool ok1=false, ok2=false; double num = rm.captured(1).toDouble(&ok1); double den = rm.captured(2).toDouble(&ok2);
+                if (ok1 && ok2 && den != 0.0) { fps = num/den; ok = true; }
+            }
+            if (!ok) {
+                QRegularExpression numRe(R"((\d{1,3}(?:\.\d{1,3})?))");
+                QRegularExpressionMatch nm = numRe.match(src);
+                if (nm.hasMatch()) { fps = nm.captured(1).toDouble(&ok); }
+            }
+            if (!ok || fps < 1.0 || fps > 240.0) fps = 30.0;
+            return QString::number(fps, 'f', (fabs(fps - (int)fps) < 1e-6) ? 0 : 3);
+        };
+        QString frameRate = normalizeFpsStr(mediaInfo.frameRate);
         args << "-framerate" << frameRate;
     }
 
     args << "-i" << QDir::toNativeSeparators(inputFile);
-    args << "-c:v" << "copy";
+
+    // Determine if AV1 film grain is enabled
+    bool enableFilmGrain = false; int filmGrainValue = 0;
+    {
+        QSettings settings; // Use same scope as UI
+        enableFilmGrain = settings.value("filmgrainEnabled", false).toBool();
+        filmGrainValue = settings.value("filmgrainValue", 25).toInt();
+        if (filmGrainValue < 0) filmGrainValue = 0; if (filmGrainValue > 50) filmGrainValue = 50;
+    }
+
+    bool isAv1 = mediaInfo.videoCodec.contains("AV1", Qt::CaseInsensitive);
+
+    if (enableFilmGrain && isAv1) {
+        // Re-encode with libsvtav1 and apply film grain synthesis
+        args << "-c:v" << "libsvtav1";
+        args << "-crf" << "30"; // reasonable default
+        args << "-preset" << "6";
+        args << "-b:v" << "0";
+        // Set pixel format based on bit depth
+        QString pixelFormat = parsePixelFormat(mediaInfo);
+        args << "-pix_fmt" << pixelFormat;
+        args << "-svtav1-params" << QString("film-grain=%1").arg(filmGrainValue);
+    } else {
+        // Default: stream copy for video
+        args << "-c:v" << "copy";
+    }
 
     if (m_overwrite) {
         args << "-y";

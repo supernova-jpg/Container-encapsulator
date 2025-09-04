@@ -50,6 +50,9 @@ private:
     MediaInfo createDefaultMediaInfo(const QString &filePath);
     QString getResolutionDescription(int width, int height);
     void parseAndLogFFprobeVersion(const QString &versionOutput);
+    QString normalizeFpsFromText(const QString &text);
+    QString extractFpsFromName(const QString &name);
+    QString bitDepthFromPixelFormat(const QString &pixFmt);
     
     QProcess *m_probeProcess;
     QQueue<AnalysisTask> m_taskQueue;

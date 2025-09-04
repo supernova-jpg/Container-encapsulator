@@ -169,41 +169,6 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                     info.resolution = QString("%1x%2").arg(width).arg(height);
                 }
                 
-                // Parse frame rate using regex-only strategy and clamp
-                auto normalizeFps = [](const QString &text) -> QString {
-                    // Try rational form: e.g. 60000/1001
-                    QRegularExpression rationalRe(R"((\d+)\s*/\s*(\d+))");
-                    QRegularExpressionMatch m = rationalRe.match(text);
-                    double fps = 0.0;
-                    bool matched = false;
-                    if (m.hasMatch()) {
-                        bool ok1 = false, ok2 = false;
-                        double num = m.captured(1).toDouble(&ok1);
-                        double den = m.captured(2).toDouble(&ok2);
-                        if (ok1 && ok2 && den != 0.0) {
-                            fps = num / den;
-                            matched = true;
-                        }
-                    }
-
-                    // Try explicit numeric with optional 'fps'
-                    if (!matched) {
-                        QRegularExpression numericRe(R"((\d{1,3}(?:\.\d{1,3})?)\s*(?:fps)?\b)", QRegularExpression::CaseInsensitiveOption);
-                        QRegularExpressionMatch n = numericRe.match(text);
-                        if (n.hasMatch()) {
-                            bool ok = false;
-                            fps = n.captured(1).toDouble(&ok);
-                            matched = ok;
-                        }
-                    }
-
-                    // Clamp or default
-                    if (!matched || fps < 1.0 || fps > 240.0) {
-                        fps = 30.0;
-                    }
-                    return QString::number(fps, 'f', 3) + " fps";
-                };
-
                 QString fpsSource;
                 if (stream.contains("avg_frame_rate")) {
                     fpsSource = stream["avg_frame_rate"].toString();
@@ -211,7 +176,7 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                     fpsSource = stream["r_frame_rate"].toString();
                 }
                 if (!fpsSource.isEmpty()) {
-                    info.frameRate = normalizeFps(fpsSource);
+                    info.frameRate = normalizeFpsFromText(fpsSource);
                 }
                 
                 // Parse bit depth
@@ -220,18 +185,7 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                     info.bitDepth = QString::number(bitDepth) + " bit";
                 } else if (stream.contains("pix_fmt")) {
                     QString pixFmt = stream["pix_fmt"].toString();
-                    // Common pixel format to bit depth mapping
-                    if (pixFmt.contains("yuv420p10") || pixFmt.contains("p010")) {
-                        info.bitDepth = "10 bit";
-                    } else if (pixFmt.contains("yuv420p12")) {
-                        info.bitDepth = "12 bit";
-                    } else if (pixFmt.contains("yuv420p16")) {
-                        info.bitDepth = "16 bit";
-                    } else if (pixFmt.contains("yuv420p")) {
-                        info.bitDepth = "8 bit";
-                    } else {
-                        info.bitDepth = "Unknown";
-                    }
+                    info.bitDepth = bitDepthFromPixelFormat(pixFmt);
                 }
                 
                 // CRITICAL PATH: Parse HDR-related color metadata for proper color handling
@@ -461,45 +415,8 @@ MediaInfo MediaAnalyzer::createDefaultMediaInfo(const QString &filePath)
         }
     }
     
-    // Parse frame rate from filename using regex-only strategy and clamp
-    {
-        auto parseFpsFromName = [](const QString &name) -> QString {
-            // Try patterns like 60fps, 29.97fps
-            QRegularExpression fpsTag(R"((\d{2,3}(?:\.\d{1,3})?)\s*fps)", QRegularExpression::CaseInsensitiveOption);
-            QRegularExpressionMatch m = fpsTag.match(name);
-            double fps = 0.0;
-            bool found = false;
-            if (m.hasMatch()) {
-                bool ok = false;
-                fps = m.captured(1).toDouble(&ok);
-                found = ok;
-            }
-            // Try 60p, 120p, etc.
-            if (!found) {
-                QRegularExpression pTag(R"((\d{2,3})\s*p\b)", QRegularExpression::CaseInsensitiveOption);
-                QRegularExpressionMatch pm = pTag.match(name);
-                if (pm.hasMatch()) {
-                    bool ok = false;
-                    fps = pm.captured(1).toDouble(&ok);
-                    found = ok;
-                }
-            }
-            // Try common decimals standalone: 23.976, 29.97, 59.94
-            if (!found) {
-                QRegularExpression commonDec(R"((?<!\d)(23\.976|29\.97|59\.94|119\.88)(?!\d))");
-                QRegularExpressionMatch cm = commonDec.match(name);
-                if (cm.hasMatch()) {
-                    fps = cm.captured(1).toDouble();
-                    found = true;
-                }
-            }
-            if (!found || fps < 1.0 || fps > 240.0) {
-                fps = 30.0;
-            }
-            return QString::number(fps, 'f', 3) + " fps";
-        };
-        info.frameRate = parseFpsFromName(fileName);
-    }
+    // Parse frame rate from filename using shared helper
+    info.frameRate = extractFpsFromName(fileName);
     
     // Parse color space based on resolution and keywords
     if (fileName.contains("hdr") || fileName.contains("rec2020") || fileName.contains("bt2020")) {
@@ -522,6 +439,88 @@ MediaInfo MediaAnalyzer::createDefaultMediaInfo(const QString &filePath)
     }
     
     return info;
+}
+
+QString MediaAnalyzer::normalizeFpsFromText(const QString &text)
+{
+    QRegularExpression rationalRe(R"((\d+)\s*/\s*(\d+))");
+    QRegularExpressionMatch m = rationalRe.match(text);
+    double fps = 0.0;
+    bool matched = false;
+    if (m.hasMatch()) {
+        bool ok1 = false, ok2 = false;
+        double num = m.captured(1).toDouble(&ok1);
+        double den = m.captured(2).toDouble(&ok2);
+        if (ok1 && ok2 && den != 0.0) {
+            fps = num / den;
+            matched = true;
+        }
+    }
+    if (!matched) {
+        QRegularExpression numericRe(R"((\d{1,3}(?:\.\d{1,3})?)\s*(?:fps)?\b)", QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch n = numericRe.match(text);
+        if (n.hasMatch()) {
+            bool ok = false;
+            fps = n.captured(1).toDouble(&ok);
+            matched = ok;
+        }
+    }
+    if (!matched || fps < 1.0 || fps > 240.0) {
+        fps = 30.0;
+    }
+    return QString::number(fps, 'f', 3) + " fps";
+}
+
+QString MediaAnalyzer::extractFpsFromName(const QString &name)
+{
+    QRegularExpression fpsTag(R"((\d{2,3}(?:\.\d{1,3})?)\s*fps)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch m = fpsTag.match(name);
+    double fps = 0.0;
+    bool found = false;
+    if (m.hasMatch()) {
+        bool ok = false;
+        fps = m.captured(1).toDouble(&ok);
+        found = ok;
+    }
+    if (!found) {
+        QRegularExpression pTag(R"((\d{2,3})\s*p\b)", QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch pm = pTag.match(name);
+        if (pm.hasMatch()) {
+            bool ok = false;
+            fps = pm.captured(1).toDouble(&ok);
+            found = ok;
+        }
+    }
+    if (!found) {
+        QRegularExpression commonDec(R"((?<!\d)(23\.976|29\.97|59\.94|119\.88)(?!\d))");
+        QRegularExpressionMatch cm = commonDec.match(name);
+        if (cm.hasMatch()) {
+            fps = cm.captured(1).toDouble();
+            found = true;
+        }
+    }
+    if (!found || fps < 1.0 || fps > 240.0) {
+        fps = 30.0;
+    }
+    return QString::number(fps, 'f', 3) + " fps";
+}
+
+QString MediaAnalyzer::bitDepthFromPixelFormat(const QString &pixFmt)
+{
+    QString pf = pixFmt.toLower();
+    if (pf.contains("yuv420p10") || pf.contains("p010") || pf.contains("yuv422p10") || pf.contains("yuv444p10")) {
+        return "10 bit";
+    }
+    if (pf.contains("yuv420p12") || pf.contains("yuv422p12") || pf.contains("yuv444p12")) {
+        return "12 bit";
+    }
+    if (pf.contains("yuv420p16") || pf.contains("yuv422p16") || pf.contains("yuv444p16")) {
+        return "16 bit";
+    }
+    if (pf.contains("yuv420p") || pf.contains("nv12") || pf.contains("yuyv422") || pf.contains("uyvy422")) {
+        return "8 bit";
+    }
+    return "Unknown";
 }
 
 void MediaAnalyzer::parseAndLogFFprobeVersion(const QString &versionOutput)

@@ -244,8 +244,9 @@ QStringList FileProcessor::buildFFmpegCommand(const QString &inputFile, const QS
     if (enableFilmGrain && isAv1) {
         // Re-encode with libsvtav1 and apply film grain synthesis
         args << "-c:v" << "libsvtav1";
-        args << "-crf" << "30"; // reasonable default
-        args << "-preset" << "6";
+        // Align with defect requirement: CRF 20, preset 4 for better quality
+        args << "-crf" << "20";
+        args << "-preset" << "4";
         args << "-b:v" << "0";
         // Set pixel format based on bit depth
         QString pixelFormat = parsePixelFormat(mediaInfo);

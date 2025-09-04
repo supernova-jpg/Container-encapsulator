@@ -210,7 +210,8 @@ void MainWindow::dropEvent(QDropEvent *event)
                 QStringList filters;
                 filters << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.wmv" 
                        << "*.flv" << "*.webm" << "*.m4v" << "*.3gp" << "*.ts"
-                       << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265";
+                       << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265"
+                       << "*.hevc"  << "*.26l" << "*.ivf";
                 QFileInfoList fileInfos = dir.entryInfoList(filters, QDir::Files);
                 foreach (const QFileInfo &fileInfo, fileInfos) {
                     files << fileInfo.absoluteFilePath();
@@ -264,7 +265,8 @@ void MainWindow::addFolder()
         QStringList filters;
         filters << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.wmv" 
                << "*.flv" << "*.webm" << "*.m4v" << "*.3gp" << "*.ts"
-               << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265";
+               << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265"
+               << "*.hevc"  << "*.26l" << "*.ivf";
         
         QFileInfoList fileInfos = dir.entryInfoList(filters, QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
         QStringList files;
@@ -839,7 +841,7 @@ bool MainWindow::isVideoFile(const QString &filePath)
     QStringList videoExtensions;
     videoExtensions << "mp4" << "mkv" << "avi" << "mov" << "wmv" << "flv" 
                    << "webm" << "m4v" << "3gp" << "ts" << "h264" << "h265" 
-                   << "bin" << "264" << "265";
+                   << "bin" << "264" << "265"  << "*.hevc"  << "*.26l" << "*.ivf";
     
     QString extension = QFileInfo(filePath).suffix().toLower();
     return videoExtensions.contains(extension);

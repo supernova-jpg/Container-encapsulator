@@ -45,6 +45,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_processing(false)
 {
     ui->setupUi(this);
+    setWindowIcon(QIcon(":/resources/app.ico"));
     
     // Create FFmpeg status label for status bar
     m_ffmpegStatusLabel = new QLabel(this);

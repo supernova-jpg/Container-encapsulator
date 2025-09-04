@@ -663,39 +663,26 @@ void MainWindow::onMediaAnalysisError(int index, const QString &error)
             }
         }
         
-        // Enhanced frame rate guessing with more patterns
-        if (fileName.contains("120fps") || fileName.contains("120p")) {
-            info.frameRate = "120.000 fps";
-        } else if (fileName.contains("100fps") || fileName.contains("100p")) {
-            info.frameRate = "100.000 fps";
-        } else if (fileName.contains("60fps") || fileName.contains("60p")) {
-            info.frameRate = "60.000 fps";
-        } else if (fileName.contains("59.94") || fileName.contains("5994")) {
-            info.frameRate = "59.940 fps";
-        } else if (fileName.contains("50fps") || fileName.contains("50p")) {
-            info.frameRate = "50.000 fps";
-        } else if (fileName.contains("48fps") || fileName.contains("48p")) {
-            info.frameRate = "48.000 fps";
-        } else if (fileName.contains("30fps") || fileName.contains("30p")) {
-            info.frameRate = "30.000 fps";
-        } else if (fileName.contains("29.97") || fileName.contains("2997")) {
-            info.frameRate = "29.970 fps";
-        } else if (fileName.contains("25fps") || fileName.contains("25p")) {
-            info.frameRate = "25.000 fps";
-        } else if (fileName.contains("24fps") || fileName.contains("24p") || fileName.contains("cinema")) {
-            info.frameRate = "24.000 fps";
-        } else if (fileName.contains("23.976") || fileName.contains("23976")) {
-            info.frameRate = "23.976 fps";
-        } else {
-            // Smart default based on resolution
-            if (info.resolution.contains("4K") || info.resolution.contains("8K")) {
-                info.frameRate = "24.000 fps"; // 4K/8K often cinema
-            } else if (fileName.contains("pal") || fileName.contains("europe")) {
-                info.frameRate = "25.000 fps"; // PAL regions
-            } else {
-                info.frameRate = "30.000 fps"; // NTSC default
+        // Frame rate guessing via regex-only + clamping
+        auto normalizeFpsFromName = [](const QString &name) -> QString {
+            double fps = 0.0; bool found = false;
+            QRegularExpression fpsTag(R"((\d{1,3}(?:\.\d{1,3})?)\s*fps)", QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch m = fpsTag.match(name);
+            if (m.hasMatch()) { bool ok=false; fps = m.captured(1).toDouble(&ok); found = ok; }
+            if (!found) {
+                QRegularExpression pTag(R"((\d{1,3})\s*p\b)", QRegularExpression::CaseInsensitiveOption);
+                QRegularExpressionMatch pm = pTag.match(name);
+                if (pm.hasMatch()) { bool ok=false; fps = pm.captured(1).toDouble(&ok); found = ok; }
             }
-        }
+            if (!found) {
+                QRegularExpression dec(R"((?<!\d)(23\.976|29\.97|59\.94|119\.88)(?!\d))");
+                QRegularExpressionMatch dm = dec.match(name);
+                if (dm.hasMatch()) { fps = dm.captured(1).toDouble(); found = true; }
+            }
+            if (!found || fps < 1.0 || fps > 240.0) fps = 30.0;
+            return QString::number(fps, 'f', 3) + " fps";
+        };
+        info.frameRate = normalizeFpsFromName(fileName);
         
         // Enhanced bit depth detection
         if (fullFileName.contains("10bit") || fullFileName.contains("10-bit")) {
@@ -993,7 +980,40 @@ void MainWindow::setupEditableCell(int row, int column, const QString &currentVa
                     }
                     break;
                 }
-                case COL_FRAME_RATE: info.frameRate = text; break;
+                case COL_FRAME_RATE: {
+                    // Normalize via regex and clamp [1,240], default 30
+                    auto normalizeFps = [](const QString &val) -> QString {
+                        QString s = val;
+                        // Try rational a/b
+                        QRegularExpression rat(R"((\d+)\s*/\s*(\d+))");
+                        QRegularExpressionMatch rm = rat.match(s);
+                        double fps = 0.0; bool ok=false;
+                        if (rm.hasMatch()) {
+                            bool ok1=false, ok2=false; double a = rm.captured(1).toDouble(&ok1); double b = rm.captured(2).toDouble(&ok2);
+                            if (ok1 && ok2 && b != 0.0) { fps = a / b; ok = true; }
+                        }
+                        if (!ok) {
+                            QRegularExpression num(R"((\d{1,4}(?:\.\d{1,4})?))");
+                            QRegularExpressionMatch nm = num.match(s);
+                            if (nm.hasMatch()) { fps = nm.captured(1).toDouble(&ok); }
+                        }
+                        if (!ok) {
+                            QRegularExpression pTag(R"((\d{1,3})\s*p\b)", QRegularExpression::CaseInsensitiveOption);
+                            QRegularExpressionMatch pm = pTag.match(s);
+                            if (pm.hasMatch()) { bool okp=false; fps = pm.captured(1).toDouble(&okp); ok = okp; }
+                        }
+                        if (!ok || fps < 1.0 || fps > 240.0) fps = 30.0;
+                        return QString::number(fps, 'f', 3) + " fps";
+                    };
+                    QString normalized = normalizeFps(text);
+                    info.frameRate = normalized;
+                    if (QComboBox *c = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_FRAME_RATE))) {
+                        if (c->currentText() != normalized) {
+                            c->setCurrentText(normalized);
+                        }
+                    }
+                    break;
+                }
                 case COL_BIT_DEPTH: info.bitDepth = text; break;
                 case COL_COLOR_SPACE: info.colorSpace = text; break;
             }
@@ -1543,12 +1563,32 @@ void MainWindow::onApplyAllClicked()
             targetInfo.bitDepth = sourceInfo.bitDepth;
             targetInfo.colorSpace = sourceInfo.colorSpace;
             
-            // Update table metadata
-            ui->fileTable->item(row, COL_VIDEO_CODEC)->setText(sourceInfo.videoCodec);
-            ui->fileTable->item(row, COL_RESOLUTION)->setText(sourceInfo.resolution);
-            ui->fileTable->item(row, COL_FRAME_RATE)->setText(sourceInfo.frameRate);
-            ui->fileTable->item(row, COL_BIT_DEPTH)->setText(sourceInfo.bitDepth);
-            ui->fileTable->item(row, COL_COLOR_SPACE)->setText(sourceInfo.colorSpace);
+            // Update table metadata via combo widgets when present to keep UI state consistent
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_VIDEO_CODEC))) {
+                combo->setCurrentText(sourceInfo.videoCodec);
+            } else if (ui->fileTable->item(row, COL_VIDEO_CODEC)) {
+                ui->fileTable->item(row, COL_VIDEO_CODEC)->setText(sourceInfo.videoCodec);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_RESOLUTION))) {
+                combo->setCurrentText(sourceInfo.resolution);
+            } else if (ui->fileTable->item(row, COL_RESOLUTION)) {
+                ui->fileTable->item(row, COL_RESOLUTION)->setText(sourceInfo.resolution);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_FRAME_RATE))) {
+                combo->setCurrentText(sourceInfo.frameRate);
+            } else if (ui->fileTable->item(row, COL_FRAME_RATE)) {
+                ui->fileTable->item(row, COL_FRAME_RATE)->setText(sourceInfo.frameRate);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_BIT_DEPTH))) {
+                combo->setCurrentText(sourceInfo.bitDepth);
+            } else if (ui->fileTable->item(row, COL_BIT_DEPTH)) {
+                ui->fileTable->item(row, COL_BIT_DEPTH)->setText(sourceInfo.bitDepth);
+            }
+            if (QComboBox *combo = qobject_cast<QComboBox*>(ui->fileTable->cellWidget(row, COL_COLOR_SPACE))) {
+                combo->setCurrentText(sourceInfo.colorSpace);
+            } else if (ui->fileTable->item(row, COL_COLOR_SPACE)) {
+                ui->fileTable->item(row, COL_COLOR_SPACE)->setText(sourceInfo.colorSpace);
+            }
             
             // Update output name with the extracted pattern
             if (!prefix.isEmpty() || !suffix.isEmpty()) {

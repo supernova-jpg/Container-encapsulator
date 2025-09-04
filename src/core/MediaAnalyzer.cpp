@@ -169,15 +169,49 @@ MediaInfo MediaAnalyzer::parseFFprobeOutput(const QString &output)
                     info.resolution = QString("%1x%2").arg(width).arg(height);
                 }
                 
-                if (stream.contains("r_frame_rate")) {
-                    QString frameRate = stream["r_frame_rate"].toString();
-                    if (frameRate.contains("/")) {
-                        QStringList parts = frameRate.split("/");
-                        if (parts.size() == 2) {
-                            double fps = parts[0].toDouble() / parts[1].toDouble();
-                            info.frameRate = QString::number(fps, 'f', 2) + " fps";
+                // Parse frame rate using regex-only strategy and clamp
+                auto normalizeFps = [](const QString &text) -> QString {
+                    // Try rational form: e.g. 60000/1001
+                    QRegularExpression rationalRe(R"((\d+)\s*/\s*(\d+))");
+                    QRegularExpressionMatch m = rationalRe.match(text);
+                    double fps = 0.0;
+                    bool matched = false;
+                    if (m.hasMatch()) {
+                        bool ok1 = false, ok2 = false;
+                        double num = m.captured(1).toDouble(&ok1);
+                        double den = m.captured(2).toDouble(&ok2);
+                        if (ok1 && ok2 && den != 0.0) {
+                            fps = num / den;
+                            matched = true;
                         }
                     }
+
+                    // Try explicit numeric with optional 'fps'
+                    if (!matched) {
+                        QRegularExpression numericRe(R"((\d{1,3}(?:\.\d{1,3})?)\s*(?:fps)?\b)", QRegularExpression::CaseInsensitiveOption);
+                        QRegularExpressionMatch n = numericRe.match(text);
+                        if (n.hasMatch()) {
+                            bool ok = false;
+                            fps = n.captured(1).toDouble(&ok);
+                            matched = ok;
+                        }
+                    }
+
+                    // Clamp or default
+                    if (!matched || fps < 1.0 || fps > 240.0) {
+                        fps = 30.0;
+                    }
+                    return QString::number(fps, 'f', 3) + " fps";
+                };
+
+                QString fpsSource;
+                if (stream.contains("avg_frame_rate")) {
+                    fpsSource = stream["avg_frame_rate"].toString();
+                } else if (stream.contains("r_frame_rate")) {
+                    fpsSource = stream["r_frame_rate"].toString();
+                }
+                if (!fpsSource.isEmpty()) {
+                    info.frameRate = normalizeFps(fpsSource);
                 }
                 
                 // Parse bit depth
@@ -427,35 +461,44 @@ MediaInfo MediaAnalyzer::createDefaultMediaInfo(const QString &filePath)
         }
     }
     
-    // Parse frame rate with comprehensive pattern matching
-    QRegularExpression fpsRegex("(\\d{2,3}(?:\\.\\d+)?)fps");
-    QRegularExpressionMatch fpsMatch = fpsRegex.match(fileName);
-    if (fpsMatch.hasMatch()) {
-        double fps = fpsMatch.captured(1).toDouble();
-        info.frameRate = QString("%1 fps").arg(fps, 0, 'f', fps == (int)fps ? 0 : 3);
-    } else {
-        // Try specific frame rate patterns
-        if (fileName.contains("23.976") || fileName.contains("23976")) {
-            info.frameRate = "23.976 fps";
-        } else if (fileName.contains("29.97") || fileName.contains("2997")) {
-            info.frameRate = "29.970 fps";
-        } else if (fileName.contains("59.94") || fileName.contains("5994")) {
-            info.frameRate = "59.940 fps";
-        } else if (fileName.contains("120p") || fileName.contains("120fps")) {
-            info.frameRate = "120.000 fps";
-        } else if (fileName.contains("60p") || fileName.contains("60fps")) {
-            info.frameRate = "60.000 fps";
-        } else if (fileName.contains("50p") || fileName.contains("50fps")) {
-            info.frameRate = "50.000 fps";
-        } else if (fileName.contains("30p") || fileName.contains("30fps")) {
-            info.frameRate = "30.000 fps";
-        } else if (fileName.contains("25p") || fileName.contains("25fps")) {
-            info.frameRate = "25.000 fps";
-        } else if (fileName.contains("24p") || fileName.contains("24fps")) {
-            info.frameRate = "24.000 fps";
-        } else {
-            info.frameRate = "Unknown";
-        }
+    // Parse frame rate from filename using regex-only strategy and clamp
+    {
+        auto parseFpsFromName = [](const QString &name) -> QString {
+            // Try patterns like 60fps, 29.97fps
+            QRegularExpression fpsTag(R"((\d{2,3}(?:\.\d{1,3})?)\s*fps)", QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch m = fpsTag.match(name);
+            double fps = 0.0;
+            bool found = false;
+            if (m.hasMatch()) {
+                bool ok = false;
+                fps = m.captured(1).toDouble(&ok);
+                found = ok;
+            }
+            // Try 60p, 120p, etc.
+            if (!found) {
+                QRegularExpression pTag(R"((\d{2,3})\s*p\b)", QRegularExpression::CaseInsensitiveOption);
+                QRegularExpressionMatch pm = pTag.match(name);
+                if (pm.hasMatch()) {
+                    bool ok = false;
+                    fps = pm.captured(1).toDouble(&ok);
+                    found = ok;
+                }
+            }
+            // Try common decimals standalone: 23.976, 29.97, 59.94
+            if (!found) {
+                QRegularExpression commonDec(R"((?<!\d)(23\.976|29\.97|59\.94|119\.88)(?!\d))");
+                QRegularExpressionMatch cm = commonDec.match(name);
+                if (cm.hasMatch()) {
+                    fps = cm.captured(1).toDouble();
+                    found = true;
+                }
+            }
+            if (!found || fps < 1.0 || fps > 240.0) {
+                fps = 30.0;
+            }
+            return QString::number(fps, 'f', 3) + " fps";
+        };
+        info.frameRate = parseFpsFromName(fileName);
     }
     
     // Parse color space based on resolution and keywords

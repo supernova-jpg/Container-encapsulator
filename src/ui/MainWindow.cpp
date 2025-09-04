@@ -210,7 +210,8 @@ void MainWindow::dropEvent(QDropEvent *event)
                 QStringList filters;
                 filters << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.wmv" 
                        << "*.flv" << "*.webm" << "*.m4v" << "*.3gp" << "*.ts"
-                       << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265";
+                       << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265"
+                       << "*.hevc"  << "*.26l" << "*.ivf";
                 QFileInfoList fileInfos = dir.entryInfoList(filters, QDir::Files);
                 foreach (const QFileInfo &fileInfo, fileInfos) {
                     files << fileInfo.absoluteFilePath();
@@ -264,7 +265,8 @@ void MainWindow::addFolder()
         QStringList filters;
         filters << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.wmv" 
                << "*.flv" << "*.webm" << "*.m4v" << "*.3gp" << "*.ts"
-               << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265";
+               << "*.h264" << "*.h265" << "*.bin" << "*.264" << "*.265"
+               << "*.hevc"  << "*.26l" << "*.ivf";
         
         QFileInfoList fileInfos = dir.entryInfoList(filters, QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
         QStringList files;
@@ -468,6 +470,9 @@ void MainWindow::startProcessing()
     // Determine processing mode
     QString processingMode = ui->binToYuvModeRadio->isChecked() ? "binToYuv" : "muxing";
     
+    // Persist current UI settings so downstream components (FileProcessor) can read them
+    saveSettings();
+
     logMessage("Starting batch processing...", LogLevel::Info);
     // Mark all rows as queued before starting
     for (int i = 0; i < ui->fileTable->rowCount(); ++i) {
@@ -580,6 +585,10 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
             setupEditableCell(index, COL_BIT_DEPTH, info.bitDepth, getBitDepthOptions());
             setupEditableCell(index, COL_COLOR_SPACE, info.colorSpace, getColorSpaceOptions());
         }
+
+        // Refresh Output Format options and Film Grain visibility immediately after this file is analyzed
+        updateContainerFormats();
+        onFormatChanged();
     }
     
     // Check if all analysis is complete
@@ -589,6 +598,10 @@ void MainWindow::onMediaAnalysisFinished(int index, const MediaInfo &info)
     if (completedAnalysis >= m_files.size()) {
         logMessage("Media analysis completed", LogLevel::Info);
         completedAnalysis = 0;
+
+        // After all analysis is done, refresh container formats and film grain visibility immediately
+        updateContainerFormats();
+        onFormatChanged();
     }
 }
 
@@ -828,7 +841,7 @@ bool MainWindow::isVideoFile(const QString &filePath)
     QStringList videoExtensions;
     videoExtensions << "mp4" << "mkv" << "avi" << "mov" << "wmv" << "flv" 
                    << "webm" << "m4v" << "3gp" << "ts" << "h264" << "h265" 
-                   << "bin" << "264" << "265";
+                   << "bin" << "264" << "265"  << "*.hevc"  << "*.26l" << "*.ivf";
     
     QString extension = QFileInfo(filePath).suffix().toLower();
     return videoExtensions.contains(extension);

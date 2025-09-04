@@ -24,6 +24,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QRadioButton>
 #include <QtWidgets/QSpacerItem>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QStatusBar>
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QTextEdit>
@@ -51,8 +52,12 @@ public:
     QLabel *outputFolderLabel;
     QLineEdit *outputFolderEdit;
     QPushButton *browseBtn;
+    QPushButton *openFolderBtn;
     QLabel *formatLabel;
+    QHBoxLayout *formatLayout;
     QComboBox *formatCombo;
+    QCheckBox *filmgrainCheck;
+    QSpinBox *filmgrainSpin;
     QLabel *namingLabel;
     QHBoxLayout *namingLayout;
     QLineEdit *prefixEdit;
@@ -197,11 +202,20 @@ public:
 
         settingsLayout->addWidget(browseBtn, 0, 2, 1, 1);
 
+        openFolderBtn = new QPushButton(settingsGroup);
+        openFolderBtn->setObjectName("openFolderBtn");
+        openFolderBtn->setMaximumWidth(100);
+
+        settingsLayout->addWidget(openFolderBtn, 0, 3, 1, 1);
+
         formatLabel = new QLabel(settingsGroup);
         formatLabel->setObjectName("formatLabel");
 
         settingsLayout->addWidget(formatLabel, 1, 0, 1, 1);
 
+        formatLayout = new QHBoxLayout();
+        formatLayout->setObjectName("formatLayout");
+        
         formatCombo = new QComboBox(settingsGroup);
         formatCombo->addItem(QString());
         formatCombo->addItem(QString());
@@ -210,7 +224,24 @@ public:
         formatCombo->addItem(QString());
         formatCombo->setObjectName("formatCombo");
 
-        settingsLayout->addWidget(formatCombo, 1, 1, 1, 1);
+        formatLayout->addWidget(formatCombo);
+
+        filmgrainCheck = new QCheckBox(settingsGroup);
+        filmgrainCheck->setObjectName("filmgrainCheck");
+        filmgrainCheck->setVisible(false);
+
+        formatLayout->addWidget(filmgrainCheck);
+
+        filmgrainSpin = new QSpinBox(settingsGroup);
+        filmgrainSpin->setObjectName("filmgrainSpin");
+        filmgrainSpin->setMinimum(0);
+        filmgrainSpin->setMaximum(50);
+        filmgrainSpin->setValue(25);
+        filmgrainSpin->setVisible(false);
+
+        formatLayout->addWidget(filmgrainSpin);
+
+        settingsLayout->addLayout(formatLayout, 1, 1, 1, 1);
 
         namingLabel = new QLabel(settingsGroup);
         namingLabel->setObjectName("namingLabel");
@@ -507,12 +538,23 @@ public:
         outputFolderEdit->setToolTip(QCoreApplication::translate("MainWindow", "Directory where processed files will be saved", nullptr));
 #endif // QT_CONFIG(tooltip)
         browseBtn->setText(QCoreApplication::translate("MainWindow", "Browse", nullptr));
+        openFolderBtn->setText(QCoreApplication::translate("MainWindow", "Open Folder", nullptr));
+#if QT_CONFIG(tooltip)
+        openFolderBtn->setToolTip(QCoreApplication::translate("MainWindow", "Open the output folder in file explorer", nullptr));
+#endif // QT_CONFIG(tooltip)
         formatLabel->setText(QCoreApplication::translate("MainWindow", "Output Format:", nullptr));
         formatCombo->setItemText(0, QCoreApplication::translate("MainWindow", "mp4", nullptr));
         formatCombo->setItemText(1, QCoreApplication::translate("MainWindow", "mkv", nullptr));
         formatCombo->setItemText(2, QCoreApplication::translate("MainWindow", "mov", nullptr));
         formatCombo->setItemText(3, QCoreApplication::translate("MainWindow", "webm", nullptr));
         formatCombo->setItemText(4, QCoreApplication::translate("MainWindow", "ts", nullptr));
+        filmgrainCheck->setText(QCoreApplication::translate("MainWindow", "Use Film Grain", nullptr));
+#if QT_CONFIG(tooltip)
+        filmgrainCheck->setToolTip(QCoreApplication::translate("MainWindow", "Enable film grain synthesis for AV1 encoding (0-50)", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        filmgrainSpin->setToolTip(QCoreApplication::translate("MainWindow", "Film grain strength (0-50)", nullptr));
+#endif // QT_CONFIG(tooltip)
 
 #if QT_CONFIG(tooltip)
         formatCombo->setToolTip(QCoreApplication::translate("MainWindow", "Target container format", nullptr));

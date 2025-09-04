@@ -77,8 +77,11 @@ private slots:
     
     // Settings
     void browseOutputFolder();
+    void openOutputFolder();
     void onFormatChanged();
     void onCompatibilityToggled();
+    void updateContainerFormats();
+    void onFilmgrainValueChanged(int value);
     
     // Processing mode
     void onProcessingModeChanged();

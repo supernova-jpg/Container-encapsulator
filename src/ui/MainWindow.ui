@@ -165,10 +165,19 @@
        <number>120</number>
       </property>
       <layout class="QGridLayout" name="settingsLayout">
+       <property name="columnStretch">
+        <string>0,1,0,0</string>
+       </property>
        <item row="0" column="0">
         <widget class="QLabel" name="outputFolderLabel">
          <property name="text">
           <string>Output Folder:</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>0</height>
+          </size>
          </property>
         </widget>
        </item>
@@ -184,8 +193,33 @@
          <property name="text">
           <string>Browse</string>
          </property>
+         <property name="minimumSize">
+          <size>
+           <width>80</width>
+           <height>0</height>
+          </size>
+         </property>
          <property name="maximumWidth">
           <number>80</number>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="3">
+        <widget class="QPushButton" name="openFolderBtn">
+         <property name="text">
+          <string>Open Folder</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>90</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumWidth">
+          <number>90</number>
+         </property>
+         <property name="toolTip">
+          <string>Open the output folder in file explorer</string>
          </property>
         </widget>
        </item>
@@ -194,44 +228,110 @@
          <property name="text">
           <string>Output Format:</string>
          </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>0</height>
+          </size>
+         </property>
         </widget>
        </item>
        <item row="1" column="1">
-        <widget class="QComboBox" name="formatCombo">
-         <property name="toolTip">
-          <string>Target container format</string>
-         </property>
+        <layout class="QHBoxLayout" name="formatLayout">
          <item>
-          <property name="text">
-           <string>mp4</string>
-          </property>
+          <widget class="QComboBox" name="formatCombo">
+           <property name="toolTip">
+            <string>Target container format</string>
+           </property>
+           <item>
+            <property name="text">
+             <string>mp4</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>mkv</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>mov</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>webm</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>ts</string>
+            </property>
+           </item>
+          </widget>
          </item>
          <item>
-          <property name="text">
-           <string>mkv</string>
-          </property>
+          <widget class="QCheckBox" name="filmgrainCheck">
+           <property name="text">
+            <string>Use Film Grain</string>
+           </property>
+           <property name="toolTip">
+            <string>Enable film grain synthesis for AV1 encoding (0-50)</string>
+           </property>
+           <property name="visible">
+            <bool>false</bool>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>120</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
          </item>
          <item>
-          <property name="text">
-           <string>mov</string>
-          </property>
+          <widget class="QSpinBox" name="filmgrainSpin">
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>50</number>
+           </property>
+           <property name="value">
+            <number>25</number>
+           </property>
+           <property name="toolTip">
+            <string>Film grain strength (0-50)</string>
+           </property>
+           <property name="visible">
+            <bool>false</bool>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>60</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>60</width>
+             <height>16777215</height>
+            </size>
+           </property>
+          </widget>
          </item>
-         <item>
-          <property name="text">
-           <string>webm</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>ts</string>
-          </property>
-         </item>
-        </widget>
+        </layout>
        </item>
        <item row="2" column="0">
         <widget class="QLabel" name="namingLabel">
          <property name="text">
           <string>Naming Rule:</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>0</height>
+          </size>
          </property>
         </widget>
        </item>

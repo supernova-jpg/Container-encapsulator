@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QDialogButtonBox>
 #include <QIntValidator>
+#include <QDesktopServices>
 #ifdef Q_OS_WIN
 #include <QSettings>
 #endif
@@ -136,9 +137,15 @@ void MainWindow::setupConnections()
     
     // Settings
     connect(ui->browseBtn, &QPushButton::clicked, this, &MainWindow::browseOutputFolder);
+    connect(ui->openFolderBtn, &QPushButton::clicked, this, &MainWindow::openOutputFolder);
     connect(ui->formatCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
             this, &MainWindow::onFormatChanged);
     connect(ui->compatibilityCheck, &QCheckBox::toggled, this, &MainWindow::onCompatibilityToggled);
+    connect(ui->filmgrainCheck, &QCheckBox::toggled, [this](bool checked) {
+        ui->filmgrainSpin->setVisible(checked);
+    });
+    connect(ui->filmgrainSpin, QOverload<int>::of(&QSpinBox::valueChanged), 
+            this, &MainWindow::onFilmgrainValueChanged);
     
     // Processing
     connect(ui->startBtn, &QPushButton::clicked, this, &MainWindow::startProcessing);
@@ -325,9 +332,39 @@ void MainWindow::browseOutputFolder()
     }
 }
 
+void MainWindow::openOutputFolder()
+{
+    QString folder = ui->outputFolderEdit->text();
+    if (folder.isEmpty()) {
+        QMessageBox::warning(this, "Warning", "Please select an output folder first.");
+        return;
+    }
+    
+    QDir dir(folder);
+    if (!dir.exists()) {
+        QMessageBox::warning(this, "Warning", "The output folder does not exist.");
+        return;
+    }
+    
+    QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+}
+
 void MainWindow::onFormatChanged()
 {
     updateFileTable(); // Update output names and compatibility warnings
+    updateContainerFormats();
+    
+    // Show/hide film grain controls based on format
+    bool showFilmGrain = false;
+    for (int i = 0; i < m_mediaInfos.size(); ++i) {
+        if (m_mediaInfos[i].videoCodec.contains("AV1", Qt::CaseInsensitive)) {
+            showFilmGrain = true;
+            break;
+        }
+    }
+    
+    ui->filmgrainCheck->setVisible(showFilmGrain);
+    ui->filmgrainSpin->setVisible(showFilmGrain && ui->filmgrainCheck->isChecked());
 }
 
 void MainWindow::onCompatibilityToggled()
@@ -336,6 +373,68 @@ void MainWindow::onCompatibilityToggled()
         logMessage("Smart compatibility mode enabled", LogLevel::Info);
         // TODO: Implement smart format suggestions
     }
+}
+
+void MainWindow::updateContainerFormats()
+{
+    // Get the current selection before updating
+    QString currentFormat = ui->formatCombo->currentText();
+    
+    // Determine which codecs are being used
+    bool hasHEVC = false;
+    bool hasAVC = false;
+    bool hasAV1 = false;
+    bool hasVP9 = false;
+    
+    for (const MediaInfo &info : m_mediaInfos) {
+        if (info.videoCodec.contains("H.265", Qt::CaseInsensitive) || 
+            info.videoCodec.contains("HEVC", Qt::CaseInsensitive)) {
+            hasHEVC = true;
+        } else if (info.videoCodec.contains("H.264", Qt::CaseInsensitive) || 
+                   info.videoCodec.contains("AVC", Qt::CaseInsensitive)) {
+            hasAVC = true;
+        } else if (info.videoCodec.contains("AV1", Qt::CaseInsensitive)) {
+            hasAV1 = true;
+        } else if (info.videoCodec.contains("VP9", Qt::CaseInsensitive)) {
+            hasVP9 = true;
+        }
+    }
+    
+    // Clear and repopulate format combo
+    ui->formatCombo->blockSignals(true);
+    ui->formatCombo->clear();
+    
+    if (hasHEVC || hasAVC) {
+        // HEVC and AVC only support mp4 and mov
+        ui->formatCombo->addItem("mp4");
+        ui->formatCombo->addItem("mov");
+    } else if (hasAV1 || hasVP9) {
+        // AV1 and VP9 prefer webm, mkv, mov
+        ui->formatCombo->addItem("webm");
+        ui->formatCombo->addItem("mkv");
+        ui->formatCombo->addItem("mov");
+    } else {
+        // Show all formats if no specific codec is detected
+        ui->formatCombo->addItem("mp4");
+        ui->formatCombo->addItem("mkv");
+        ui->formatCombo->addItem("mov");
+        ui->formatCombo->addItem("webm");
+        ui->formatCombo->addItem("ts");
+    }
+    
+    // Try to restore the previous selection if it's still available
+    int index = ui->formatCombo->findText(currentFormat);
+    if (index >= 0) {
+        ui->formatCombo->setCurrentIndex(index);
+    }
+    
+    ui->formatCombo->blockSignals(false);
+}
+
+void MainWindow::onFilmgrainValueChanged(int value)
+{
+    // This will be used when processing files
+    Q_UNUSED(value);
 }
 
 void MainWindow::startProcessing()
@@ -674,6 +773,8 @@ void MainWindow::onTableCellChanged(int row, int column)
         case COL_VIDEO_CODEC:
             info.videoCodec = item->text();
             showCompatibilityWarning(info.videoCodec, getOutputFormat());
+            updateContainerFormats();
+            onFormatChanged(); // Update film grain visibility
             break;
         case COL_RESOLUTION:
             info.resolution = item->text();
@@ -873,7 +974,11 @@ void MainWindow::setupEditableCell(int row, int column, const QString &currentVa
         if (row < m_mediaInfos.size()) {
             MediaInfo &info = m_mediaInfos[row];
             switch (column) {
-                case COL_VIDEO_CODEC: info.videoCodec = text; break;
+                case COL_VIDEO_CODEC: 
+                    info.videoCodec = text; 
+                    updateContainerFormats();
+                    onFormatChanged(); // Update film grain visibility
+                    break;
                 case COL_RESOLUTION: {
                     if (text == "Manual Input...") {
                         QString manual = promptManualResolution();
@@ -1320,6 +1425,11 @@ void MainWindow::loadSettings()
     ui->compatibilityCheck->setChecked(settings.value("compatibility", false).toBool());
     ui->conflictCombo->setCurrentText(settings.value("conflictHandling", "Skip").toString());
     
+    // Load film grain settings
+    ui->filmgrainCheck->setChecked(settings.value("filmgrainEnabled", false).toBool());
+    ui->filmgrainSpin->setValue(settings.value("filmgrainValue", 25).toInt());
+    ui->filmgrainSpin->setVisible(ui->filmgrainCheck->isChecked());
+    
     // Load log filters
     ui->infoCheck->setChecked(settings.value("logFilters/info", true).toBool());
     ui->warningCheck->setChecked(settings.value("logFilters/warning", true).toBool());
@@ -1360,6 +1470,10 @@ void MainWindow::saveSettings()
     // Save other settings
     settings.setValue("compatibility", ui->compatibilityCheck->isChecked());
     settings.setValue("conflictHandling", ui->conflictCombo->currentText());
+    
+    // Save film grain settings
+    settings.setValue("filmgrainEnabled", ui->filmgrainCheck->isChecked());
+    settings.setValue("filmgrainValue", ui->filmgrainSpin->value());
     
     // Save log filters
     settings.setValue("logFilters/info", ui->infoCheck->isChecked());
